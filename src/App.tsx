@@ -1166,7 +1166,32 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const isBottomNav = (preferences.navigationMode || 'top') === 'bottom';
+  const [isNavVisible, setIsNavVisible] = useState(true);
+
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      const diff = currentScrollY - lastScrollY;
+      if (diff > 12 && currentScrollY > 50) {
+        setIsNavVisible(false);
+      } else if (diff < -8 || currentScrollY < 30) {
+        setIsNavVisible(true);
+      }
+      lastScrollY = currentScrollY;
+    };
+
+    const handleInteraction = () => {
+      setIsNavVisible(true);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('pointerdown', handleInteraction, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('pointerdown', handleInteraction);
+    };
+  }, []);
 
   if (!currentUser) {
     return <PublicWelcome />;
@@ -1175,7 +1200,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   return (
     <div className="app-shell">
       <Sidebar view={view} onNavigate={onNavigate} annotationsCount={myAnnotations.length} tags={allTags} currentUser={currentUser} />
-      <main className={`main-area ${isBottomNav ? 'has-bottom-nav' : ''}`}>
+      <main className="main-area has-bottom-nav">
         <header className="topbar">
           <div className="mobile-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
             <div className="brand-mark" onClick={() => onNavigate('overview')} title="Visão Geral">
@@ -1188,55 +1213,6 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
             >
               Caderno Bíblico
             </span>
-
-            {/* Icons starting immediately beside logo in Modo A */}
-            {!isBottomNav && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
-                <button 
-                  type="button" 
-                  className={`icon-button ${view === 'overview' ? 'active' : ''}`}
-                  onClick={() => onNavigate('overview')} 
-                  title="Início (Visão geral)" 
-                  aria-label="Início" 
-                  data-testid="button-home"
-                >
-                  <Home size={18} />
-                </button>
-
-                <button 
-                  type="button" 
-                  className={`icon-button ${view === 'notes' ? 'active' : ''}`}
-                  onClick={() => onNavigate('notes')} 
-                  title="Minhas Anotações" 
-                  aria-label="Minhas Anotações" 
-                  data-testid="button-notes"
-                >
-                  <FileText size={18} />
-                </button>
-
-                <button 
-                  type="button" 
-                  className={`icon-button ${view === 'feed' ? 'active' : ''}`}
-                  onClick={() => onNavigate('feed')} 
-                  title="Mural de Reflexões" 
-                  aria-label="Mural" 
-                  data-testid="button-feed"
-                >
-                  <PenLine size={18} />
-                </button>
-
-                <button 
-                  type="button" 
-                  className={`icon-button ${view === 'profiles' ? 'active' : ''}`}
-                  onClick={() => onNavigate('profiles')} 
-                  title="Buscar Escritores" 
-                  aria-label="Escritores" 
-                  data-testid="button-profiles"
-                >
-                  <Users size={18} />
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="top-actions">
@@ -1293,31 +1269,6 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
               >
                 <LogOut size={18} />
               </button>
-
-              {/* Perfil no canto direito (Modo A) */}
-              {!isBottomNav && (
-                <button 
-                  type="button" 
-                  className="icon-button"
-                  onClick={() => {
-                    if (currentUser) {
-                      const name = currentUser.displayName || currentUser.email?.split('@')[0] || 'Meu caderno';
-                      setActiveProfile({ authorId: currentUser.uid, authorName: name, authorPhoto: currentUser.photoURL || undefined });
-                    } else {
-                      onNavigate('profiles');
-                    }
-                  }} 
-                  title="Meu Perfil" 
-                  aria-label="Meu Perfil" 
-                  data-testid="button-profile"
-                >
-                  {currentUser?.photoURL ? (
-                    <img src={currentUser.photoURL} alt="Perfil" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
-                  ) : (
-                    <User size={18} />
-                  )}
-                </button>
-              )}
             </div>
 
             <button
@@ -1361,15 +1312,14 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
         {view === 'preferences' && <PreferencesView preferences={preferences} onPreferences={updatePreferences} annotations={myAnnotations} saved={saved} onClear={() => { if (window.confirm('Apagar as anotações e passagens deste dispositivo?')) { setAnnotations([]); setSaved([]); showToast('Dados locais apagados.'); } }} />}
       </main>
 
-      {isBottomNav && (
-        <InstagramBottomNav 
-          view={view} 
-          onNavigate={onNavigate} 
-          onOpenComposer={() => openComposer()} 
-          currentUser={currentUser} 
-          onOpenProfile={setActiveProfile} 
-        />
-      )}
+      <InstagramBottomNav 
+        view={view} 
+        onNavigate={onNavigate} 
+        onOpenComposer={() => openComposer()} 
+        currentUser={currentUser} 
+        onOpenProfile={setActiveProfile} 
+        isNavVisible={isNavVisible}
+      />
 
       {composer && <AnnotationComposer annotation={composer.annotation} initialReference={composer.initialReference} annotations={annotations} onCancel={() => setComposer(undefined)} onPersist={persistAnnotation} />}
       {confirmDelete && <ConfirmDelete annotation={confirmDelete} onCancel={() => setConfirmDelete(null)} onConfirm={removeAnnotation} />}
@@ -2828,18 +2778,20 @@ function InstagramBottomNav({
   view,
   onNavigate,
   currentUser,
-  onOpenProfile
+  onOpenProfile,
+  isNavVisible = true
 }: {
   view: View;
   onNavigate: (view: View) => void;
   onOpenComposer?: () => void;
   currentUser: FirebaseUser | null;
   onOpenProfile: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void;
+  isNavVisible?: boolean;
 }) {
   const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno';
 
   return (
-    <nav className="floating-glass-menu" data-testid="floating-bottom-nav">
+    <nav className={`floating-glass-menu ${!isNavVisible ? 'nav-hidden' : ''}`} data-testid="floating-bottom-nav">
       <button
         type="button"
         className={`floating-menu-item ${view === 'overview' ? 'active' : ''}`}

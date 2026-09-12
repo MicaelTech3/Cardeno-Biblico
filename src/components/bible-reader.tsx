@@ -450,6 +450,8 @@ export function BibleReader({
                 className="study-fullscreen-btn"
                 onClick={() => {
                   saveVerseNote();
+                  setSelectedVerseNumber(null);
+                  setIsPanelFullscreen(false);
                   onOpen(selectedReference);
                 }}
                 title="Escrever em Tela Cheia"
@@ -472,6 +474,8 @@ export function BibleReader({
                   onChange={(e) => {
                     if (e.target.value) {
                       saveVerseNote();
+                      setSelectedVerseNumber(null);
+                      setIsPanelFullscreen(false);
                       onOpen(selectedReference);
                     }
                   }}

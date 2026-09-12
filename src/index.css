@@ -825,17 +825,30 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .notifications-popover {
   position: absolute;
   top: calc(100% + 10px);
-  right: 0;
+  right: -10px;
   width: min(340px, calc(100vw - 32px));
   max-height: 420px;
   overflow-y: auto;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 16px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
   z-index: 1000;
   padding: 16px;
   animation: popIn 0.15s ease-out;
+}
+
+@media (max-width: 600px) {
+  .notifications-popover {
+    position: fixed;
+    top: 68px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: 380px;
+    margin: 0 auto;
+    z-index: 2000;
+  }
 }
 
 .notif-item {
@@ -907,6 +920,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   justify-content: space-around;
   align-items: center;
   z-index: 990;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  will-change: transform, opacity;
+}
+
+.floating-glass-menu.nav-hidden, .instagram-bottom-nav.nav-hidden {
+  transform: translate(-50%, 120px) !important;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .floating-glass-menu::after, .instagram-bottom-nav::after {
