@@ -1181,31 +1181,35 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
             <div className="brand-mark"><CadernoLogo /></div>
           </div>
           <div className="top-actions">
-            {/* Corner Action: Home button, Hamburger menu & Notification Bell side-by-side */}
+            {/* Corner Action: Notification Bell, and conditionally Home/Menu if not Modo B */}
             <div className="top-corner-group" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button 
-                type="button" 
-                className="icon-button" 
-                onClick={() => onNavigate('overview')} 
-                title="Ir para o início (Visão geral)" 
-                aria-label="Ir para o início" 
-                data-testid="button-home"
-              >
-                <Home size={18} />
-              </button>
-              <div className="mobile-menu-wrap">
-                <button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav((open) => !open)} aria-label={mobileNav ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileNav} data-testid="button-open-menu">
-                  {mobileNav ? <X size={18} /> : <Menu size={18} />}
-                </button>
-                {mobileNav && (
-                  <>
-                    <div className="mobile-menu-backdrop" onClick={() => setMobileNav(false)} />
-                    <MobileMenuPanel view={view} onNavigate={(next) => { onNavigate(next); setMobileNav(false); }} currentUser={currentUser} onOpenProfile={(author) => { setActiveProfile(author); setMobileNav(false); }} />
-                  </>
-                )}
-              </div>
+              {!isBottomNav && (
+                <>
+                  <button 
+                    type="button" 
+                    className="icon-button" 
+                    onClick={() => onNavigate('overview')} 
+                    title="Ir para o início (Visão geral)" 
+                    aria-label="Ir para o início" 
+                    data-testid="button-home"
+                  >
+                    <Home size={18} />
+                  </button>
+                  <div className="mobile-menu-wrap">
+                    <button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav((open) => !open)} aria-label={mobileNav ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileNav} data-testid="button-open-menu">
+                      {mobileNav ? <X size={18} /> : <Menu size={18} />}
+                    </button>
+                    {mobileNav && (
+                      <>
+                        <div className="mobile-menu-backdrop" onClick={() => setMobileNav(false)} />
+                        <MobileMenuPanel view={view} onNavigate={(next) => { onNavigate(next); setMobileNav(false); }} currentUser={currentUser} onOpenProfile={(author) => { setActiveProfile(author); setMobileNav(false); }} />
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
 
-              {/* Notification Bell Button & Popover */}
+              {/* Notification Bell Button & Popover (Always present at top) */}
               <div style={{ position: 'relative' }}>
                 <button 
                   type="button" 
@@ -1278,8 +1282,6 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           view={view} 
           onNavigate={onNavigate} 
           onOpenComposer={() => openComposer()} 
-          unreadCount={unreadCount} 
-          onToggleNotifications={() => setShowNotifications(!showNotifications)} 
           currentUser={currentUser} 
           onOpenProfile={setActiveProfile} 
         />
@@ -1287,7 +1289,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
 
       {composer && <AnnotationComposer annotation={composer.annotation} initialReference={composer.initialReference} annotations={annotations} onCancel={() => setComposer(undefined)} onPersist={persistAnnotation} />}
       {confirmDelete && <ConfirmDelete annotation={confirmDelete} onCancel={() => setConfirmDelete(null)} onConfirm={removeAnnotation} />}
-      {activeProfile && <UserProfileModal profile={activeProfile} annotations={annotations} onClose={() => setActiveProfile(null)} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
+      {activeProfile && <UserProfileModal profile={activeProfile} annotations={annotations} onClose={() => setActiveProfile(null)} onNavigate={onNavigate} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
       {activeVersePreview && <VersePreviewModal reference={activeVersePreview} onClose={() => setActiveVersePreview(null)} onOpenBible={openReference} />}
       {toast && <div className="toast" role="status" data-testid="status-toast">{toast}</div>}
     </div>
@@ -2369,6 +2371,7 @@ function UserProfileModal({
   profile, 
   annotations, 
   onClose,
+  onNavigate,
   onEdit, 
   onDelete, 
   onFavorite, 
@@ -2383,6 +2386,7 @@ function UserProfileModal({
   profile: { authorId: string; authorName: string; authorPhoto?: string };
   annotations: Annotation[]; 
   onClose: () => void;
+  onNavigate?: (view: View) => void;
   onEdit: (annotation: Annotation) => void; 
   onDelete: (annotation: Annotation) => void; 
   onFavorite: (id: string) => void; 
@@ -2459,10 +2463,11 @@ function UserProfileModal({
       role="presentation" 
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ zIndex: 1100 }}
     >
-      <section className="composer-sheet" style={{ maxWidth: 720 }}>
-        <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      <section className="composer-sheet profile-modal-sheet" style={{ maxWidth: 720, paddingBottom: 80 }}>
+        <div className="modal-header" style={{ flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 240 }}>
             {profile.authorPhoto ? (
               <img src={profile.authorPhoto} alt={profile.authorName} className="user-profile-avatar" style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover' }} />
             ) : (
@@ -2472,7 +2477,7 @@ function UserProfileModal({
               <h2 className="modal-title" style={{ fontSize: '1.4rem' }}>{profile.authorName}</h2>
               <div style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.85rem' }}>{handleName}</div>
               
-              <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: '0.85rem', flexWrap: 'wrap' }}>
                 <span><strong>{authorNotes.length}</strong> {authorNotes.length === 1 ? 'publicação' : 'publicações'}</span>
                 <span><strong>{realFollowerWriters.length}</strong> seguidores</span>
                 <span><strong>{realFollowedWriters.length}</strong> seguindo</span>
@@ -2480,19 +2485,51 @@ function UserProfileModal({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {!isSelf && profile.authorId && profile.authorId !== 'guest' && (
-              <button 
-                type="button" 
-                className={isFollowing ? "outline-button" : "primary-button"}
-                onClick={() => onToggleFollow?.(profile.authorId, profile.authorName)}
-                style={{ padding: '6px 14px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                {isFollowing ? <UserCheck size={15} /> : <UserPlus size={15} />}
-                {isFollowing ? 'Seguindo' : 'Seguir'}
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {isSelf ? (
+              <>
+                <button
+                  type="button"
+                  className="outline-button"
+                  onClick={() => {
+                    onClose();
+                    onNavigate?.('preferences');
+                  }}
+                  style={{ padding: '6px 12px', fontSize: '0.8rem', gap: 6 }}
+                  title="Configurações"
+                  data-testid="button-profile-settings"
+                >
+                  <Settings size={14} /> Configurações
+                </button>
+
+                <button
+                  type="button"
+                  className="outline-button danger-button"
+                  onClick={() => {
+                    onClose();
+                    logoutFirebase();
+                  }}
+                  style={{ padding: '6px 12px', fontSize: '0.8rem', gap: 6 }}
+                  title="Sair da conta"
+                  data-testid="button-profile-logout"
+                >
+                  <LogOut size={14} /> Sair
+                </button>
+              </>
+            ) : (
+              profile.authorId && profile.authorId !== 'guest' && (
+                <button 
+                  type="button" 
+                  className={isFollowing ? "outline-button" : "primary-button"}
+                  onClick={() => onToggleFollow?.(profile.authorId, profile.authorName)}
+                  style={{ padding: '6px 14px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  {isFollowing ? <UserCheck size={15} /> : <UserPlus size={15} />}
+                  {isFollowing ? 'Seguindo' : 'Seguir'}
+                </button>
+              )
             )}
-            <button type="button" className="icon-button" onClick={onClose}><X size={18} /></button>
+            <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar perfil"><X size={18} /></button>
           </div>
         </div>
 
@@ -2707,16 +2744,12 @@ function InstagramBottomNav({
   view,
   onNavigate,
   onOpenComposer,
-  unreadCount,
-  onToggleNotifications,
   currentUser,
   onOpenProfile
 }: {
   view: View;
   onNavigate: (view: View) => void;
   onOpenComposer: () => void;
-  unreadCount: number;
-  onToggleNotifications: () => void;
   currentUser: FirebaseUser | null;
   onOpenProfile: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void;
 }) {
@@ -2765,18 +2798,6 @@ function InstagramBottomNav({
       >
         <BookOpen size={20} />
         <span>Bíblia</span>
-      </button>
-
-      <button
-        type="button"
-        className="instagram-nav-item"
-        onClick={onToggleNotifications}
-        title="Notificações"
-        data-testid="bottom-nav-notifications"
-      >
-        <Bell size={20} />
-        {unreadCount > 0 && <span className="notification-badge-dot" style={{ top: 2, right: 6 }}>{unreadCount}</span>}
-        <span>Avisos</span>
       </button>
 
       <button
