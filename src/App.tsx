@@ -1127,6 +1127,32 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
               )}
             </div>
 
+            <button
+              type="button"
+              className="icon-button desktop-header-control"
+              onClick={() => {
+                const map: Record<string, SystemFontSize> = {
+                  small: 'medium',
+                  medium: 'large',
+                  large: 'xlarge',
+                  xlarge: 'small',
+                };
+                const next = map[preferences.systemFontSize || 'medium'];
+                updatePreferences({ systemFontSize: next });
+                const labels: Record<string, string> = {
+                  small: 'Menor',
+                  medium: 'Padrão',
+                  large: 'Maior',
+                  xlarge: 'Muito Maior',
+                };
+                showToast(`Letra do sistema: ${labels[next]}`);
+              }}
+              aria-label="Ajustar tamanho da fonte do sistema"
+              title={`Tamanho da fonte do sistema: ${preferences.systemFontSize || 'medium'}`}
+              data-testid="button-quick-font-size"
+            >
+              <span style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'var(--app-font-serif)' }}>A+</span>
+            </button>
             <button type="button" className="icon-button desktop-header-control" onClick={() => onNavigate('preferences')} aria-label="Abrir preferências" data-testid="button-open-settings"><Settings size={17} /></button>
             <div className="desktop-account"><AccountMenu currentUser={currentUser} onOpenProfile={setActiveProfile} /></div>
             <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> Nova anotação</button>
@@ -1588,7 +1614,79 @@ function Reader({ preferences, annotations, saved, onPreferences, onOpen, onSave
 }
 
 function PreferencesView({ preferences, onPreferences, annotations, saved, onClear }: { preferences: Preferences; onPreferences: (patch: Partial<Preferences>) => void; annotations: Annotation[]; saved: SavedPassage[]; onClear: () => void }) {
-  return <section className="page"><div className="eyebrow">seu jeito de voltar</div><h1 className="page-title">Preferências</h1><p className="page-intro">Ajustes simples para que o caderno continue parecendo seu.</p><div className="settings"><div className="paper-card settings-card"><div className="setting-row"><div><h3>Idioma</h3><p>Escolha o idioma principal da experiência.</p></div><select className="select-field setting-select" value={preferences.language} onChange={(event) => onPreferences({ language: event.target.value as Preferences['language'] })} aria-label="Escolher idioma" data-testid="select-language"><option value="pt-BR">Português</option><option value="en">English</option></select></div><div className="setting-row"><div><h3>Tema da leitura</h3><p>Escolha a luz que acompanha seu momento.</p></div><div className="segmented"><button type="button" className={`segment ${preferences.theme === 'light' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'light' })} data-testid="button-theme-light"><Eye size={13} /> Claro</button><button type="button" className={`segment ${preferences.theme === 'dark' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'dark' })} data-testid="button-theme-dark"><EyeOff size={13} /> Escuro</button></div></div><div className="setting-row"><div><h3>Tamanho do texto</h3><p>Defina o ritmo visual dos versículos.</p></div><div className="segmented">{(['small', 'medium', 'large'] as Preferences['readerSize'][]).map((size) => <button type="button" className={`segment ${preferences.readerSize === size ? 'active' : ''}`} onClick={() => onPreferences({ readerSize: size })} key={size} data-testid={`button-reader-size-${size}`}>{size === 'small' ? 'Menor' : size === 'medium' ? 'Padrão' : 'Maior'}</button>)}</div></div><div className="setting-row"><div><h3>Números dos versículos</h3><p>Deixe as referências visíveis enquanto lê.</p></div><button type="button" className={`switch ${preferences.showVerseNumbers ? 'on' : ''}`} onClick={() => onPreferences({ showVerseNumbers: !preferences.showVerseNumbers })} aria-label="Alternar números dos versículos" data-testid="button-toggle-verse-numbers"><span /></button></div></div><div className="paper-card local-data-card"><h3>Dados locais</h3><p>Este caderno vive neste navegador. Você tem {annotations.length} anotações e {saved.length} passagens guardadas. Limpar os dados não pode ser desfeito.</p><button type="button" className="outline-button danger-button" onClick={onClear} data-testid="button-clear-local-data"><Trash2 size={14} /> Apagar dados deste dispositivo</button></div></div></section>;
+  return (
+    <section className="page">
+      <div className="eyebrow">seu jeito de voltar</div>
+      <h1 className="page-title">Preferências</h1>
+      <p className="page-intro">Ajustes simples para que o caderno continue parecendo seu.</p>
+      <div className="settings">
+        <div className="paper-card settings-card">
+          <div className="setting-row">
+            <div>
+              <h3>Tamanho da letra do sistema completo</h3>
+              <p>Aumente ou diminua a letra de todo o sistema (menus, títulos, notas e botões).</p>
+            </div>
+            <div className="segmented">
+              {(['small', 'medium', 'large', 'xlarge'] as const).map((size) => (
+                <button
+                  type="button"
+                  className={`segment ${(preferences.systemFontSize || 'medium') === size ? 'active' : ''}`}
+                  onClick={() => onPreferences({ systemFontSize: size })}
+                  key={size}
+                  data-testid={`button-system-font-size-${size}`}
+                >
+                  {size === 'small' ? 'Menor' : size === 'medium' ? 'Padrão' : size === 'large' ? 'Maior' : 'Muito Maior'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <h3>Idioma</h3>
+              <p>Escolha o idioma principal da experiência.</p>
+            </div>
+            <select className="select-field setting-select" value={preferences.language} onChange={(event) => onPreferences({ language: event.target.value as Preferences['language'] })} aria-label="Escolher idioma" data-testid="select-language">
+              <option value="pt-BR">Português</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div className="setting-row">
+            <div>
+              <h3>Tema da leitura</h3>
+              <p>Escolha a luz que acompanha seu momento.</p>
+            </div>
+            <div className="segmented">
+              <button type="button" className={`segment ${preferences.theme === 'light' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'light' })} data-testid="button-theme-light"><Eye size={13} /> Claro</button>
+              <button type="button" className={`segment ${preferences.theme === 'dark' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'dark' })} data-testid="button-theme-dark"><EyeOff size={13} /> Escuro</button>
+            </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <h3>Tamanho do texto dos versículos</h3>
+              <p>Defina o ritmo visual dos versículos no leitor.</p>
+            </div>
+            <div className="segmented">
+              {(['small', 'medium', 'large'] as Preferences['readerSize'][]).map((size) => (
+                <button type="button" className={`segment ${preferences.readerSize === size ? 'active' : ''}`} onClick={() => onPreferences({ readerSize: size })} key={size} data-testid={`button-reader-size-${size}`}>{size === 'small' ? 'Menor' : size === 'medium' ? 'Padrão' : 'Maior'}</button>
+              ))}
+            </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <h3>Números dos versículos</h3>
+              <p>Deixe as referências visíveis enquanto lê.</p>
+            </div>
+            <button type="button" className={`switch ${preferences.showVerseNumbers ? 'on' : ''}`} onClick={() => onPreferences({ showVerseNumbers: !preferences.showVerseNumbers })} aria-label="Alternar números dos versículos" data-testid="button-toggle-verse-numbers"><span /></button>
+          </div>
+        </div>
+        <div className="paper-card local-data-card">
+          <h3>Dados locais</h3>
+          <p>Este caderno vive neste navegador. Você tem {annotations.length} anotações e {saved.length} passagens guardadas. Limpar os dados não pode ser desfeito.</p>
+          <button type="button" className="outline-button danger-button" onClick={onClear} data-testid="button-clear-local-data"><Trash2 size={14} /> Apagar dados deste dispositivo</button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function AnnotationComposer({ annotation, initialReference, annotations, onCancel, onPersist }: { annotation?: Annotation; initialReference?: BibleReference; annotations: Annotation[]; onCancel: () => void; onPersist: (draft: AnnotationDraft, editingId?: string, reason?: string) => void }) {
