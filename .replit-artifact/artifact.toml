@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Caderno Bíblico"
+description = "Um caderno digital de estudo bíblico para organizar notas, referências, capítulos e conexões entre versículos em um espaço pessoal e acolhedor."
+version = "1.0.0"
+id = "artifacts/caderno-biblico"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23267
+
+[services.development]
+run = "pnpm --filter @workspace/caderno-biblico run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/caderno-biblico", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/caderno-biblico/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23267"
+BASE_PATH = "/"
