@@ -185,6 +185,7 @@ type SavedPassage = {
 };
 
 type SystemFontSize = 'small' | 'medium' | 'large' | 'xlarge';
+type NavigationMode = 'top' | 'bottom';
 
 type Preferences = {
   selectedBook: string;
@@ -195,6 +196,7 @@ type Preferences = {
   readerSize: 'small' | 'medium' | 'large';
   showVerseNumbers: boolean;
   systemFontSize?: SystemFontSize;
+  navigationMode?: NavigationMode;
 };
 
 type BibleVerse = {
@@ -350,6 +352,7 @@ const defaultPreferences: Preferences = {
   readerSize: 'medium',
   showVerseNumbers: true,
   systemFontSize: 'medium',
+  navigationMode: 'top',
 };
 
 const makeReference = (book: string, chapter: number, verseStart: number, verseEnd?: number): BibleReference => {
@@ -1124,7 +1127,46 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
     }
   };
 
+  const handleSelectNotification = (notif: AppNotification) => {
+    setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
+    setShowNotifications(false);
+
+    if (notif.type === 'unfinished') {
+      const draft = myAnnotations.find((a) => a.status === 'draft');
+      if (draft) {
+        editComposer(draft);
+      } else {
+        onNavigate('notes');
+      }
+    } else if (notif.annotationId) {
+      const targetNote = annotations.find((a) => a.id === notif.annotationId);
+      if (targetNote) {
+        if (targetNote.authorId === (currentUser?.uid || 'guest')) {
+          editComposer(targetNote);
+        } else {
+          onNavigate('feed');
+        }
+      }
+    } else if (notif.authorName) {
+      const targetAuthor = annotations.find((a) => a.authorName === notif.authorName || (notif.recipientId && a.authorId === notif.recipientId));
+      if (targetAuthor) {
+        setActiveProfile({
+          authorId: targetAuthor.authorId || targetAuthor.authorName,
+          authorName: targetAuthor.authorName,
+          authorPhoto: targetAuthor.authorPhoto,
+        });
+      } else {
+        setActiveProfile({
+          authorId: notif.recipientId || 'guest',
+          authorName: notif.authorName,
+          authorPhoto: notif.authorPhoto,
+        });
+      }
+    }
+  };
+
   const unreadCount = notifications.filter(n => !n.read).length;
+  const isBottomNav = (preferences.navigationMode || 'top') === 'bottom';
 
   if (!currentUser) {
     return <PublicWelcome />;
@@ -1133,10 +1175,11 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   return (
     <div className="app-shell">
       <Sidebar view={view} onNavigate={onNavigate} annotationsCount={myAnnotations.length} tags={allTags} currentUser={currentUser} />
-      <main className="main-area">
+      <main className={`main-area ${isBottomNav ? 'has-bottom-nav' : ''}`}>
         <header className="topbar">
-          <div className="mobile-brand"><div className="brand-mark"><CadernoLogo /></div><span className="brand-word">Caderno Bíblico</span></div>
-          <p className="topbar-note">Um mural de pequenas descobertas na Palavra.</p>
+          <div className="mobile-brand" onClick={() => onNavigate('overview')} style={{ cursor: 'pointer' }}>
+            <div className="brand-mark"><CadernoLogo /></div>
+          </div>
           <div className="top-actions">
             {/* Corner Action: Home button, Hamburger menu & Notification Bell side-by-side */}
             <div className="top-corner-group" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1182,6 +1225,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
                     notifications={notifications} 
                     onClose={() => setShowNotifications(false)} 
                     onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                    onSelectNotification={handleSelectNotification}
                   />
                 )}
               </div>
@@ -1228,6 +1272,18 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
         {view === 'reader' && <BibleReader books={books} preferences={preferences} annotations={myAnnotations} saved={saved} onPreferences={updatePreferences} onOpen={openComposer} onSavePassage={handleToggleSavedPassage} />}
         {view === 'preferences' && <PreferencesView preferences={preferences} onPreferences={updatePreferences} annotations={myAnnotations} saved={saved} onClear={() => { if (window.confirm('Apagar as anotações e passagens deste dispositivo?')) { setAnnotations([]); setSaved([]); showToast('Dados locais apagados.'); } }} />}
       </main>
+
+      {isBottomNav && (
+        <InstagramBottomNav 
+          view={view} 
+          onNavigate={onNavigate} 
+          onOpenComposer={() => openComposer()} 
+          unreadCount={unreadCount} 
+          onToggleNotifications={() => setShowNotifications(!showNotifications)} 
+          currentUser={currentUser} 
+          onOpenProfile={setActiveProfile} 
+        />
+      )}
 
       {composer && <AnnotationComposer annotation={composer.annotation} initialReference={composer.initialReference} annotations={annotations} onCancel={() => setComposer(undefined)} onPersist={persistAnnotation} />}
       {confirmDelete && <ConfirmDelete annotation={confirmDelete} onCancel={() => setConfirmDelete(null)} onConfirm={removeAnnotation} />}
@@ -1681,6 +1737,30 @@ function PreferencesView({ preferences, onPreferences, annotations, saved, onCle
       <p className="page-intro">Ajustes simples para que o caderno continue parecendo seu.</p>
       <div className="settings">
         <div className="paper-card settings-card">
+          <div className="setting-row">
+            <div>
+              <h3>Modo de Navegação dos Ícones</h3>
+              <p>Escolha se prefere os ícones no topo (Modo A) ou em uma barra inferior estilo Instagram (Modo B).</p>
+            </div>
+            <div className="segmented">
+              <button
+                type="button"
+                className={`segment ${(preferences.navigationMode || 'top') === 'top' ? 'active' : ''}`}
+                onClick={() => onPreferences({ navigationMode: 'top' })}
+                data-testid="button-nav-mode-top"
+              >
+                Modo A (Topo)
+              </button>
+              <button
+                type="button"
+                className={`segment ${(preferences.navigationMode || 'top') === 'bottom' ? 'active' : ''}`}
+                onClick={() => onPreferences({ navigationMode: 'bottom' })}
+                data-testid="button-nav-mode-bottom"
+              >
+                Modo B (Barra Inferior)
+              </button>
+            </div>
+          </div>
           <div className="setting-row">
             <div>
               <h3>Tamanho da letra do sistema completo</h3>
@@ -2620,6 +2700,106 @@ function ConfirmDelete({ annotation, onCancel, onConfirm }: { annotation: Annota
         </div>
       </section>
     </div>
+  );
+}
+
+function InstagramBottomNav({
+  view,
+  onNavigate,
+  onOpenComposer,
+  unreadCount,
+  onToggleNotifications,
+  currentUser,
+  onOpenProfile
+}: {
+  view: View;
+  onNavigate: (view: View) => void;
+  onOpenComposer: () => void;
+  unreadCount: number;
+  onToggleNotifications: () => void;
+  currentUser: FirebaseUser | null;
+  onOpenProfile: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void;
+}) {
+  const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno';
+
+  return (
+    <nav className="instagram-bottom-nav">
+      <button
+        type="button"
+        className={`instagram-nav-item ${view === 'overview' ? 'active' : ''}`}
+        onClick={() => onNavigate('overview')}
+        title="Visão geral"
+        data-testid="bottom-nav-overview"
+      >
+        <Home size={20} />
+        <span>Início</span>
+      </button>
+
+      <button
+        type="button"
+        className={`instagram-nav-item ${view === 'feed' ? 'active' : ''}`}
+        onClick={() => onNavigate('feed')}
+        title="Mural de reflexões"
+        data-testid="bottom-nav-feed"
+      >
+        <PenLine size={20} />
+        <span>Mural</span>
+      </button>
+
+      <button
+        type="button"
+        className="instagram-nav-item accent-plus-btn"
+        onClick={onOpenComposer}
+        title="Nova anotação"
+        data-testid="bottom-nav-composer"
+      >
+        <Plus size={24} />
+      </button>
+
+      <button
+        type="button"
+        className={`instagram-nav-item ${view === 'reader' ? 'active' : ''}`}
+        onClick={() => onNavigate('reader')}
+        title="Ler a Bíblia"
+        data-testid="bottom-nav-reader"
+      >
+        <BookOpen size={20} />
+        <span>Bíblia</span>
+      </button>
+
+      <button
+        type="button"
+        className="instagram-nav-item"
+        onClick={onToggleNotifications}
+        title="Notificações"
+        data-testid="bottom-nav-notifications"
+      >
+        <Bell size={20} />
+        {unreadCount > 0 && <span className="notification-badge-dot" style={{ top: 2, right: 6 }}>{unreadCount}</span>}
+        <span>Avisos</span>
+      </button>
+
+      <button
+        type="button"
+        className={`instagram-nav-item ${view === 'profiles' ? 'active' : ''}`}
+        onClick={() => {
+          if (currentUser) {
+            onOpenProfile({ authorId: currentUser.uid, authorName: name, authorPhoto: currentUser.photoURL || undefined });
+          } else {
+            onNavigate('profiles');
+          }
+        }}
+        title="Meu Perfil / Escritores"
+        data-testid="bottom-nav-profile"
+      >
+        {currentUser?.photoURL ? (
+          <img src={currentUser.photoURL} alt={name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+        ) : (
+          <User size={20} />
+        )}
+        <span>Perfil</span>
+      </button>
+    </nav>
   );
 }
 

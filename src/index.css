@@ -885,3 +885,79 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   transform: translateY(-2px);
   border-color: hsl(var(--accent) / 0.5);
 }
+
+/* Instagram-Style Bottom Navigation Bar (Modo B) */
+.instagram-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 62px;
+  background: hsl(var(--card) / 0.96);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid hsl(var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 999;
+  padding: 0 8px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.instagram-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 12px;
+  transition: color 0.18s ease, transform 0.15s ease;
+  position: relative;
+  font-size: 10px;
+  font-weight: 500;
+  gap: 2px;
+}
+
+.instagram-nav-item.active {
+  color: hsl(var(--accent));
+  font-weight: 700;
+}
+
+.instagram-nav-item:hover {
+  color: hsl(var(--accent));
+}
+
+.instagram-nav-item.accent-plus-btn {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground)) !important;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px hsl(var(--accent) / 0.35);
+  margin-top: -14px;
+}
+
+.instagram-nav-item.accent-plus-btn:hover {
+  transform: scale(1.08);
+}
+
+.has-bottom-nav {
+  padding-bottom: 76px !important;
+}
+
+.notif-item {
+  transition: background 0.15s ease, padding 0.15s ease;
+  border-radius: 8px;
+}
+
+.notif-item:hover {
+  background: hsl(var(--muted) / 0.5);
+}
