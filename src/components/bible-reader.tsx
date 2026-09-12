@@ -1,5 +1,5 @@
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Bookmark, Check, FileText, Heart, Info, Link2, Maximize2, Plus, Search, X } from 'lucide-react';
+import { BookOpen, Bookmark, Check, FileText, Heart, Info, Link2, Maximize2, Minimize2, Plus, Search, X } from 'lucide-react';
 
 type ColorName = 'navy' | 'terracotta' | 'sage' | 'gold' | 'plum';
 
@@ -224,6 +224,7 @@ export function BibleReader({
   const [noteHeight, setNoteHeight] = useState(92);
   const [bubblePosition, setBubblePosition] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingBubble, setIsDraggingBubble] = useState(false);
+  const [isPanelFullscreen, setIsPanelFullscreen] = useState(false);
   const verseRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ offsetX: number; offsetY: number } | null>(null);
@@ -421,10 +422,16 @@ export function BibleReader({
               </div>
             ))}
           </div>
-          {selectedVerseNumber !== null && <div className={`verse-study-panel floating ${isDraggingBubble ? 'dragging' : ''}`} ref={bubbleRef} style={bubblePosition ? { left: bubblePosition.x, top: bubblePosition.y, right: 'auto', bottom: 'auto' } : undefined}>
+          {selectedVerseNumber !== null && <div className={`verse-study-panel floating ${isPanelFullscreen ? 'fullscreen' : ''} ${isDraggingBubble ? 'dragging' : ''}`} ref={bubbleRef} style={bubblePosition && !isPanelFullscreen ? { left: bubblePosition.x, top: bubblePosition.y, right: 'auto', bottom: 'auto' } : undefined}>
             <div className="study-panel-heading drag-handle" onPointerDown={startBubbleDrag} title="Arraste para mover o balão">
               <div><div className="eyebrow">estudo do versículo</div><h3>{preferences.selectedBook} {preferences.selectedChapter}:{selectedVerseNumber}</h3></div>
-              <div className="study-panel-heading-actions"><button type="button" className={`study-favorite ${selectedMark?.favorite ? 'active' : ''}`} onClick={() => updateSelectedMark({ favorite: !selectedMark?.favorite })} aria-label={selectedMark?.favorite ? 'Remover versículo dos favoritos' : 'Favoritar versículo'} data-testid="button-favorite-verse"><Heart size={18} fill={selectedMark?.favorite ? 'currentColor' : 'none'} /></button><button type="button" className="study-close" onClick={() => setSelectedVerseNumber(null)} aria-label="Fechar balão do versículo" data-testid="button-close-verse-bubble"><X size={15} /></button></div>
+              <div className="study-panel-heading-actions">
+                <button type="button" className="study-close" onClick={() => setIsPanelFullscreen(!isPanelFullscreen)} title={isPanelFullscreen ? "Restaurar tamanho" : "Preencher a tela com o balão"} aria-label="Preencher tela" data-testid="button-toggle-fullscreen-bubble">
+                  {isPanelFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                </button>
+                <button type="button" className={`study-favorite ${selectedMark?.favorite ? 'active' : ''}`} onClick={() => updateSelectedMark({ favorite: !selectedMark?.favorite })} aria-label={selectedMark?.favorite ? 'Remover versículo dos favoritos' : 'Favoritar versículo'} data-testid="button-favorite-verse"><Heart size={18} fill={selectedMark?.favorite ? 'currentColor' : 'none'} /></button>
+                <button type="button" className="study-close" onClick={() => { setSelectedVerseNumber(null); setIsPanelFullscreen(false); }} aria-label="Fechar balão do versículo" data-testid="button-close-verse-bubble"><X size={15} /></button>
+              </div>
             </div>
             <div className="study-color-row"><span>Cor da marcação</span><div className="verse-color-picker">{(['gold', 'sage', 'terracotta', 'plum', 'navy'] as ColorName[]).map((color) => <button type="button" className={`verse-color-button ${color} ${selectedMark?.highlight === color ? 'active' : ''}`} onClick={() => updateSelectedMark({ highlight: color })} key={color} aria-label={`Pintar versículo de ${color}`} data-testid={`button-highlight-${color}`} />)}<button type="button" className="verse-color-clear" onClick={() => updateSelectedMark({ highlight: null })} aria-label="Remover cor do versículo" data-testid="button-clear-highlight"><X size={13} /></button></div></div>
             <div className="study-note-heading">

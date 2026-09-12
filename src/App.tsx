@@ -760,6 +760,17 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   const [activeProfile, setActiveProfile] = useState<{ authorId: string; authorName: string; authorPhoto?: string } | null>(null);
   const [activeVersePreview, setActiveVersePreview] = useState<BibleReference | null>(null);
 
+  useEffect(() => {
+    const handleCustomProfileOpen = (e: Event) => {
+      const customEvent = e as CustomEvent<{ authorId: string; authorName: string; authorPhoto?: string }>;
+      if (customEvent.detail) {
+        setActiveProfile(customEvent.detail);
+      }
+    };
+    window.addEventListener('open_profile', handleCustomProfileOpen);
+    return () => window.removeEventListener('open_profile', handleCustomProfileOpen);
+  }, []);
+
   // Followed users state (Twitter style)
   const [followedUsers, setFollowedUsers] = useState<string[]>(() => {
     const key = `followed_users_${currentUser?.uid || 'guest'}`;
@@ -1083,6 +1094,10 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  if (!currentUser) {
+    return <PublicWelcome />;
+  }
+
   return (
     <div className="app-shell">
       <Sidebar view={view} onNavigate={onNavigate} annotationsCount={myAnnotations.length} tags={allTags} currentUser={currentUser} />
@@ -1091,40 +1106,43 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           <div className="mobile-brand"><div className="brand-mark"><CadernoLogo /></div><span className="brand-word">Caderno Bíblico</span></div>
           <p className="topbar-note">Um mural de pequenas descobertas na Palavra.</p>
           <div className="top-actions">
-            <div className="mobile-menu-wrap">
-              <button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav((open) => !open)} aria-label={mobileNav ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileNav} data-testid="button-open-menu">
-                {mobileNav ? <X size={18} /> : <Menu size={18} />}
-              </button>
-              {mobileNav && (
-                <>
-                  <div className="mobile-menu-backdrop" onClick={() => setMobileNav(false)} />
-                  <MobileMenuPanel view={view} onNavigate={(next) => { onNavigate(next); setMobileNav(false); }} currentUser={currentUser} onOpenProfile={(author) => { setActiveProfile(author); setMobileNav(false); }} />
-                </>
-              )}
-            </div>
-
-            {/* Notification Bell Button & Popover */}
-            <div style={{ position: 'relative' }}>
-              <button 
-                type="button" 
-                className="icon-button notification-bell-btn" 
-                onClick={() => setShowNotifications(!showNotifications)} 
-                aria-label="Notificações" 
-                title="Notificações"
-                data-testid="button-open-notifications"
-              >
-                <Bell size={17} />
-                {unreadCount > 0 && (
-                  <span className="notification-badge-dot">{unreadCount}</span>
+            {/* Corner Action: Hamburger menu & Notification Bell side-by-side */}
+            <div className="top-corner-group" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="mobile-menu-wrap">
+                <button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav((open) => !open)} aria-label={mobileNav ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileNav} data-testid="button-open-menu">
+                  {mobileNav ? <X size={18} /> : <Menu size={18} />}
+                </button>
+                {mobileNav && (
+                  <>
+                    <div className="mobile-menu-backdrop" onClick={() => setMobileNav(false)} />
+                    <MobileMenuPanel view={view} onNavigate={(next) => { onNavigate(next); setMobileNav(false); }} currentUser={currentUser} onOpenProfile={(author) => { setActiveProfile(author); setMobileNav(false); }} />
+                  </>
                 )}
-              </button>
-              {showNotifications && (
-                <NotificationsPopover 
-                  notifications={notifications} 
-                  onClose={() => setShowNotifications(false)} 
-                  onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
-                />
-              )}
+              </div>
+
+              {/* Notification Bell Button & Popover */}
+              <div style={{ position: 'relative' }}>
+                <button 
+                  type="button" 
+                  className="icon-button notification-bell-btn" 
+                  onClick={() => setShowNotifications(!showNotifications)} 
+                  aria-label="Notificações" 
+                  title="Notificações"
+                  data-testid="button-open-notifications"
+                >
+                  <Bell size={17} />
+                  {unreadCount > 0 && (
+                    <span className="notification-badge-dot">{unreadCount}</span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <NotificationsPopover 
+                    notifications={notifications} 
+                    onClose={() => setShowNotifications(false)} 
+                    onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                  />
+                )}
+              </div>
             </div>
 
             <button
@@ -1155,11 +1173,11 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
             </button>
             <button type="button" className="icon-button desktop-header-control" onClick={() => onNavigate('preferences')} aria-label="Abrir preferências" data-testid="button-open-settings"><Settings size={17} /></button>
             <div className="desktop-account"><AccountMenu currentUser={currentUser} onOpenProfile={setActiveProfile} /></div>
-            <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> Nova anotação</button>
           </div>
         </header>
-        <div className="below-header-actions">
+        <div className="below-header-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" className="below-header-bible" onClick={() => onNavigate('reader')} data-testid="button-header-bible"><BookOpen size={14} /> Bíblia</button>
+          <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> Nova anotação</button>
         </div>
         {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
         {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
@@ -2235,23 +2253,64 @@ function UserProfileModal({
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'grid' | 'list' | 'following'>('grid');
+  const [activeTab, setActiveTab] = useState<'grid' | 'list' | 'followers' | 'following'>('grid');
   const authorNotes = annotations.filter((a) => a.published && (a.authorId === profile.authorId || a.authorName === profile.authorName));
   const initial = (profile.authorName[0] || 'M').toUpperCase();
   const isSelf = currentUser?.uid === profile.authorId;
   const isFollowing = followedUsers.includes(profile.authorId);
   const handleName = `@${profile.authorName.toLowerCase().replace(/\s+/g, '_')}`;
 
-  // Find real writers that are followed
-  const realFollowedWriters = useMemo(() => {
-    const list: Array<{ authorId: string; authorName: string; authorPhoto?: string }> = [];
-    annotations.forEach(a => {
-      if (a.authorId && followedUsers.includes(a.authorId) && !list.some(x => x.authorId === a.authorId)) {
-        list.push({ authorId: a.authorId, authorName: a.authorName, authorPhoto: a.authorPhoto });
+  // Find real writers in the community
+  const allAuthors = useMemo(() => {
+    const map = new Map<string, { authorId: string; authorName: string; authorPhoto?: string }>();
+    annotations.forEach((a) => {
+      if (a.authorName && a.authorId) {
+        if (!map.has(a.authorId)) {
+          map.set(a.authorId, { authorId: a.authorId, authorName: a.authorName, authorPhoto: a.authorPhoto });
+        }
       }
     });
-    return list;
-  }, [annotations, followedUsers]);
+    return Array.from(map.values());
+  }, [annotations]);
+
+  // Real authors followed by profile author
+  const realFollowedWriters = useMemo(() => {
+    return allAuthors.filter(a => followedUsers.includes(a.authorId) && a.authorId !== profile.authorId);
+  }, [allAuthors, followedUsers, profile.authorId]);
+
+  // Real authors who follow profile author (or interacted with profile author's notes)
+  const realFollowerWriters = useMemo(() => {
+    const followerSet = new Map<string, { authorId: string; authorName: string; authorPhoto?: string }>();
+    annotations.forEach(a => {
+      const isProfileNote = a.authorId === profile.authorId || a.authorName === profile.authorName;
+      if (isProfileNote && a.likedBy) {
+        a.likedBy.forEach(uid => {
+          if (uid !== profile.authorId) {
+            const author = allAuthors.find(x => x.authorId === uid);
+            if (author) followerSet.set(uid, author);
+          }
+        });
+      }
+    });
+    // Add logged-in user if following this profile
+    if (currentUser && isFollowing && !followerSet.has(currentUser.uid)) {
+      followerSet.set(currentUser.uid, {
+        authorId: currentUser.uid,
+        authorName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Meu caderno',
+        authorPhoto: currentUser.photoURL || undefined
+      });
+    }
+    return Array.from(followerSet.values());
+  }, [annotations, profile, allAuthors, currentUser, isFollowing]);
+
+  const handleOpenOtherProfile = (writer: { authorId: string; authorName: string; authorPhoto?: string }) => {
+    onClose();
+    setTimeout(() => {
+      // Trigger opening the other user's profile
+      const event = new CustomEvent('open_profile', { detail: writer });
+      window.dispatchEvent(event);
+    }, 100);
+  };
 
   return (
     <div 
@@ -2274,7 +2333,8 @@ function UserProfileModal({
               
               <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: '0.85rem' }}>
                 <span><strong>{authorNotes.length}</strong> {authorNotes.length === 1 ? 'publicação' : 'publicações'}</span>
-                {isSelf && <span><strong>{realFollowedWriters.length}</strong> seguindo</span>}
+                <span><strong>{realFollowerWriters.length}</strong> seguidores</span>
+                <span><strong>{realFollowedWriters.length}</strong> seguindo</span>
               </div>
             </div>
           </div>
@@ -2301,25 +2361,25 @@ function UserProfileModal({
             className={`profile-tab-btn ${activeTab === 'grid' ? 'active' : ''}`}
             onClick={() => setActiveTab('grid')}
           >
-            <Grid size={15} /> Grade de Blocos
+            <Grid size={15} /> Publicações ({authorNotes.length})
           </button>
           <button 
             type="button" 
-            className={`profile-tab-btn ${activeTab === 'list' ? 'active' : ''}`}
-            onClick={() => setActiveTab('list')}
+            className={`profile-tab-btn ${activeTab === 'followers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('followers')}
           >
-            <FileText size={15} /> Lista Completa
+            <Users size={15} /> Seguidores ({realFollowerWriters.length})
           </button>
           <button 
             type="button" 
             className={`profile-tab-btn ${activeTab === 'following' ? 'active' : ''}`}
             onClick={() => setActiveTab('following')}
           >
-            <UserCheck size={15} /> Seguindo ({isSelf ? realFollowedWriters.length : (isFollowing ? 1 : 0)})
+            <UserCheck size={15} /> Seguindo ({realFollowedWriters.length})
           </button>
         </div>
 
-        {/* Tab 1: Instagram-style Block Cards Grid */}
+        {/* Tab 1: Block Cards Grid */}
         {activeTab === 'grid' && (
           <div className="profile-instagram-grid">
             {authorNotes.length > 0 ? (
@@ -2352,36 +2412,45 @@ function UserProfileModal({
               ))
             ) : (
               <p style={{ color: '#667085', fontSize: '0.9rem', textAlign: 'center', padding: '30px 0', gridColumn: '1 / -1' }}>
-                Nenhum bloco de notas publicado nesta grade.
+                Nenhum bloco de notas publicado por este perfil.
               </p>
             )}
           </div>
         )}
 
-        {/* Tab 2: Standard Feed List */}
-        {activeTab === 'list' && (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {authorNotes.length > 0 ? (
-              authorNotes.map((annotation) => (
-                <AnnotationCard 
-                  key={annotation.id} 
-                  annotation={annotation} 
-                  annotations={annotations} 
-                  currentUser={currentUser}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onFavorite={onFavorite}
-                  onReference={onReference}
-                  onLike={onLike}
-                  onAddComment={onAddComment}
-                  onRepost={onRepost}
-                  followedUsers={followedUsers}
-                  onToggleFollow={onToggleFollow}
-                />
-              ))
+        {/* Tab 2: Followers List */}
+        {activeTab === 'followers' && (
+          <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+            {realFollowerWriters.length > 0 ? (
+              realFollowerWriters.map((writer) => {
+                const count = annotations.filter(a => a.published && (a.authorId === writer.authorId || a.authorName === writer.authorName)).length;
+                return (
+                  <div key={writer.authorId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                      {writer.authorPhoto ? (
+                        <img src={writer.authorPhoto} alt={writer.authorName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        <div className="avatar" style={{ width: 36, height: 36, fontSize: 15 }}>{writer.authorName[0]}</div>
+                      )}
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{writer.authorName}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'hsl(var(--muted-foreground))' }}>{count} {count === 1 ? 'publicação' : 'publicações'}</div>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="primary-button" 
+                      style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                      onClick={() => handleOpenOtherProfile(writer)}
+                    >
+                      Ver perfil
+                    </button>
+                  </div>
+                );
+              })
             ) : (
-              <p style={{ color: '#667085', fontSize: '0.9rem', textAlign: 'center', padding: '30px 0' }}>
-                Este leitor ainda não publicou nenhuma anotação no mural.
+              <p style={{ color: '#667085', fontSize: '0.9rem', textAlign: 'center', padding: '20px 0' }}>
+                Nenhum seguidor encontrado para este perfil.
               </p>
             )}
           </div>
@@ -2389,40 +2458,37 @@ function UserProfileModal({
 
         {/* Tab 3: Following List */}
         {activeTab === 'following' && (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {isSelf ? (
-              realFollowedWriters.length > 0 ? (
-                realFollowedWriters.map((writer) => (
+          <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+            {realFollowedWriters.length > 0 ? (
+              realFollowedWriters.map((writer) => {
+                const count = annotations.filter(a => a.published && (a.authorId === writer.authorId || a.authorName === writer.authorName)).length;
+                return (
                   <div key={writer.authorId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                       {writer.authorPhoto ? (
-                        <img src={writer.authorPhoto} alt={writer.authorName} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} />
+                        <img src={writer.authorPhoto} alt={writer.authorName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
                       ) : (
-                        <div className="avatar" style={{ width: 34, height: 34, fontSize: 14 }}>{writer.authorName[0]}</div>
+                        <div className="avatar" style={{ width: 36, height: 36, fontSize: 15 }}>{writer.authorName[0]}</div>
                       )}
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{writer.authorName}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'hsl(var(--muted-foreground))' }}>@{writer.authorName.toLowerCase().replace(/\s+/g, '_')}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'hsl(var(--muted-foreground))' }}>{count} {count === 1 ? 'publicação' : 'publicações'}</div>
                       </div>
                     </div>
                     <button 
                       type="button" 
-                      className="outline-button" 
-                      style={{ padding: '4px 10px', fontSize: '0.78rem' }}
-                      onClick={() => onToggleFollow?.(writer.authorId, writer.authorName)}
+                      className="primary-button" 
+                      style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                      onClick={() => handleOpenOtherProfile(writer)}
                     >
-                      Seguindo
+                      Ver perfil
                     </button>
                   </div>
-                ))
-              ) : (
-                <p style={{ color: '#667085', fontSize: '0.9rem', textAlign: 'center', padding: '20px 0' }}>
-                  Você ainda não está seguindo nenhum escritor.
-                </p>
-              )
+                );
+              })
             ) : (
               <p style={{ color: '#667085', fontSize: '0.9rem', textAlign: 'center', padding: '20px 0' }}>
-                {isFollowing ? `Você segue ${profile.authorName}.` : `Você não segue ${profile.authorName} ainda.`}
+                Este perfil ainda não está seguindo nenhum escritor.
               </p>
             )}
           </div>
