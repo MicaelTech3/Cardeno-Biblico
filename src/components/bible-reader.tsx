@@ -336,6 +336,15 @@ export function BibleReader({
     updateSelectedMark({ note: noteDraft.trim() });
     setNoteSaved(true);
   };
+
+  // 5-second auto-save timer for verse notes
+  useEffect(() => {
+    if (selectedVerseNumber === null || !noteDraft.trim()) return;
+    const timer = setInterval(() => {
+      saveVerseNote();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [selectedVerseNumber, noteDraft]);
   const currentPassage: ReaderSavedPassage = {
     id: `passage-${preferences.selectedBook}-${preferences.selectedChapter}`,
     reference: currentReference,

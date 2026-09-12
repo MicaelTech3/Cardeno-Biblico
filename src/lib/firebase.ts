@@ -74,8 +74,13 @@ export function sanitizeForFirestore<T>(obj: T): any {
 
 // Safe setDoc wrapper
 export async function safeSetDoc(docRef: any, data: any, options?: any) {
-  const cleanData = sanitizeForFirestore(data);
-  return setDoc(docRef, cleanData, options);
+  try {
+    const cleanData = sanitizeForFirestore(data);
+    return await setDoc(docRef, cleanData, options);
+  } catch (err: any) {
+    console.warn("Firestore safeSetDoc status:", err?.message || err);
+    return null;
+  }
 }
 
 // Initialize Analytics safely

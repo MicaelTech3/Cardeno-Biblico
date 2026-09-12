@@ -16,6 +16,7 @@ import {
   FileText,
   Grid,
   Heart,
+  Home,
   Info,
   Link2,
   LogOut,
@@ -205,6 +206,7 @@ type View = 'overview' | 'feed' | 'notes' | 'reader' | 'preferences' | 'profiles
 
 type AppNotification = {
   id: string;
+  recipientId?: string;
   type: 'follow' | 'like' | 'repost' | 'comment' | 'unfinished';
   title: string;
   message: string;
@@ -734,26 +736,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   const [toast, setToast] = useState('');
   
   // Notifications State & Popover
-  const [notifications, setNotifications] = useState<AppNotification[]>([
-    {
-      id: 'notif-1',
-      type: 'follow',
-      title: 'Novo seguidor',
-      message: 'Rafael Mendes começou a te seguir',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-      read: false,
-      authorName: 'Rafael Mendes'
-    },
-    {
-      id: 'notif-2',
-      type: 'like',
-      title: 'Curtida recebida',
-      message: 'Mariana Costa curtiu sua reflexão "O amor que toma a iniciativa"',
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      read: false,
-      authorName: 'Mariana Costa'
-    }
-  ]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
   // Profile view & Verse preview popover state
@@ -783,26 +766,31 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
     window.localStorage.setItem(key, JSON.stringify(followedUsers));
   }, [followedUsers, currentUser]);
 
-  const addNotification = (
+  const pushRealNotification = (
+    recipientId: string,
     type: AppNotification['type'],
     title: string,
     message: string,
     authorName?: string,
-    authorPhoto?: string
+    authorPhoto?: string,
+    annotationId?: string
   ) => {
-    setNotifications((prev) => [
-      {
-        id: makeId('notif'),
-        type,
-        title,
-        message,
-        createdAt: new Date().toISOString(),
-        read: false,
-        authorName,
-        authorPhoto
-      },
-      ...prev
-    ]);
+    const notif: AppNotification = {
+      id: makeId('notif'),
+      recipientId,
+      type,
+      title,
+      message,
+      createdAt: new Date().toISOString(),
+      read: false,
+      authorName: authorName || currentUser?.displayName || 'Um leitor',
+      authorPhoto: authorPhoto || currentUser?.photoURL || undefined,
+      annotationId,
+    };
+    try {
+      safeSetDoc(doc(db, 'notifications', notif.id), notif);
+    } catch (e) {}
+    setNotifications((prev) => [notif, ...prev.filter(n => n.id !== notif.id)]);
   };
 
   const handleToggleFollow = (authorId: string, authorName: string) => {
@@ -812,7 +800,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
     } else {
       setFollowedUsers((prev) => [...prev, authorId]);
       showToast(`Você agora está seguindo ${authorName}!`);
-      addNotification('follow', 'Novo seguidor', `Você agora está seguindo ${authorName}`, authorName);
+      pushRealNotification(authorId, 'follow', 'Novo seguidor', `${currentUser?.displayName || 'Um leitor'} começou a seguir você`, currentUser?.displayName || 'Um leitor', currentUser?.photoURL || undefined);
     }
   };
 
@@ -837,6 +825,35 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
     }
   }, [annotations]);
 
+  // Synchronize Firestore notifications in real-time
+  useEffect(() => {
+    if (!currentUser) return;
+    try {
+      const unsubscribe = onSnapshot(
+        collection(db, 'notifications'), 
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteNotifs: AppNotification[] = [];
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data() as AppNotification;
+              if (data.recipientId === currentUser.uid || data.recipientId === 'guest' || !data.recipientId) {
+                remoteNotifs.push(data);
+              }
+            });
+            remoteNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setNotifications(remoteNotifs);
+          }
+        },
+        (err) => {
+          console.warn('Firestore notifications sync status:', err.message);
+        }
+      );
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Firestore notifications listener setup status:', e);
+    }
+  }, [currentUser]);
+
   // Listen for Google Auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -848,17 +865,21 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   // Synchronize Firestore annotations in real-time
   useEffect(() => {
     try {
-      const unsubscribe = onSnapshot(collection(db, 'annotations'), (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteAnnotations: Annotation[] = [];
-          snapshot.forEach((docSnap) => {
-            remoteAnnotations.push(docSnap.data() as Annotation);
-          });
-          setAnnotations(remoteAnnotations);
+      const unsubscribe = onSnapshot(
+        collection(db, 'annotations'), 
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteAnnotations: Annotation[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteAnnotations.push(docSnap.data() as Annotation);
+            });
+            setAnnotations(remoteAnnotations);
+          }
+        }, 
+        (err) => {
+          console.warn('Firestore annotations sync status:', err.message);
         }
-      }, (err) => {
-        console.warn('Firestore sync status:', err.message);
-      });
+      );
       return () => unsubscribe();
     } catch (err) {
       console.warn('Firestore listener setup error:', err);
@@ -868,17 +889,21 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   // Synchronize Firestore saved passages in real-time
   useEffect(() => {
     try {
-      const unsubscribe = onSnapshot(collection(db, 'saved_passages'), (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteSaved: SavedPassage[] = [];
-          snapshot.forEach((docSnap) => {
-            remoteSaved.push(docSnap.data() as SavedPassage);
-          });
-          setSaved(remoteSaved);
+      const unsubscribe = onSnapshot(
+        collection(db, 'saved_passages'), 
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteSaved: SavedPassage[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteSaved.push(docSnap.data() as SavedPassage);
+            });
+            setSaved(remoteSaved);
+          }
+        }, 
+        (err) => {
+          console.warn('Firestore saved passages sync status:', err.message);
         }
-      }, (err) => {
-        console.warn('Firestore saved passages sync status:', err.message);
-      });
+      );
       return () => unsubscribe();
     } catch (err) {
       console.warn('Firestore saved listener setup error:', err);
@@ -938,20 +963,23 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   const openComposer = (initialReference?: BibleReference) => setComposer({ initialReference });
   const editComposer = (annotation: Annotation) => setComposer({ annotation });
 
-  const persistAnnotation = (draft: AnnotationDraft, editingId?: string, reason = 'save') => {
+  const persistAnnotation = (draft: AnnotationDraft, editingId?: string, reason = 'save'): string => {
     const now = new Date().toISOString();
     const authorId = currentUser?.uid ?? 'guest';
     const authorName = currentUser?.displayName || currentUser?.email?.split('@')[0] || draft.authorName || 'Meu caderno';
     const authorInitial = (authorName.slice(0, 1) || 'M').toUpperCase();
     const authorPhoto = currentUser?.photoURL || undefined;
 
+    let targetId = editingId;
     let updatedItem: Annotation;
-    if (editingId) {
-      const existing = annotations.find(a => a.id === editingId);
-      updatedItem = { ...existing, ...draft, authorId, authorName, authorInitial, authorPhoto, id: editingId, updatedAt: now } as Annotation;
-      setAnnotations((current) => current.map((annotation) => annotation.id === editingId ? updatedItem : annotation));
+
+    if (targetId) {
+      const existing = annotations.find(a => a.id === targetId);
+      updatedItem = { ...existing, ...draft, authorId, authorName, authorInitial, authorPhoto, id: targetId, updatedAt: now } as Annotation;
+      setAnnotations((current) => current.map((annotation) => annotation.id === targetId ? updatedItem : annotation));
     } else {
-      updatedItem = { ...draft, authorId, authorName, authorInitial, authorPhoto, id: makeId('annotation'), createdAt: now, updatedAt: now };
+      targetId = makeId('annotation');
+      updatedItem = { ...draft, authorId, authorName, authorInitial, authorPhoto, id: targetId, createdAt: now, updatedAt: now };
       setAnnotations((current) => [updatedItem, ...current]);
     }
     
@@ -962,8 +990,12 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
       console.error('Firestore save failed:', e);
     }
 
-    setComposer(undefined);
-    showToast(reason === 'finalized' ? 'Anotação marcada como finalizada.' : reason === 'published' ? 'Reflexão salva e sincronizada no Firestore.' : reason === 'close' ? 'Rascunho guardado. Você pode retomar quando quiser.' : editingId ? 'Anotação atualizada.' : 'Rascunho guardado no caderno.');
+    if (reason !== 'autosave') {
+      setComposer(undefined);
+      showToast(reason === 'finalized' ? 'Anotação marcada como finalizada.' : reason === 'published' ? 'Reflexão salva e sincronizada no Firestore.' : reason === 'close' ? 'Rascunho guardado. Você pode retomar quando quiser.' : editingId ? 'Anotação atualizada.' : 'Rascunho guardado no caderno.');
+    }
+
+    return targetId;
   };
 
   const handleLike = (id: string) => {
@@ -1106,8 +1138,18 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           <div className="mobile-brand"><div className="brand-mark"><CadernoLogo /></div><span className="brand-word">Caderno Bíblico</span></div>
           <p className="topbar-note">Um mural de pequenas descobertas na Palavra.</p>
           <div className="top-actions">
-            {/* Corner Action: Hamburger menu & Notification Bell side-by-side */}
+            {/* Corner Action: Home button, Hamburger menu & Notification Bell side-by-side */}
             <div className="top-corner-group" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button 
+                type="button" 
+                className="icon-button" 
+                onClick={() => onNavigate('overview')} 
+                title="Ir para o início (Visão geral)" 
+                aria-label="Ir para o início" 
+                data-testid="button-home"
+              >
+                <Home size={18} />
+              </button>
               <div className="mobile-menu-wrap">
                 <button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav((open) => !open)} aria-label={mobileNav ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileNav} data-testid="button-open-menu">
                   {mobileNav ? <X size={18} /> : <Menu size={18} />}
@@ -1337,7 +1379,7 @@ function Feed({
   const filtered = published.filter((annotation) => matchesAnnotation(annotation, search, tag, book)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return (
     <section className="page"><div className="eyebrow">um lugar para compartilhar o que ficou</div><div className="notes-header"><div><h1 className="page-title">Mural de reflexões</h1><p className="page-intro">Páginas abertas, pensamentos curtos e a companhia de outras leituras.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-new-feed-annotation"><Plus size={15} /> Publicar uma anotação</button></div>
-      <div className="feed-layout"><div className="feed-main"><div className="device-banner"><Info size={15} /><span>Mural público sincronizado no Cloud Firestore. Você pode curtir, comentar e recompartilhar reflexões.</span></div><div className="feed-toolbar" style={{ marginTop: 14 }}><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar no mural..." data-testid="input-search-feed" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar mural por livro" data-testid="select-feed-book"><option value="todos">Todos os livros</option>{booksInFeed.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar mural por etiqueta" data-testid="select-feed-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item) => <option key={item} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'reflexão no mural' : 'reflexões no mural'}</div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Nada apareceu ainda" text="Tente outra palavra ou publique uma reflexão a partir do que está lendo." action="Abrir compositor" onAction={onOpen} />}</div><aside className="feed-aside"><DraftPanel annotations={annotations} onEdit={onEdit} /><div className="paper-card side-panel"><h3>Como funciona</h3><p className="side-panel-intro">Finalize uma anotação quando ela ganhar forma. Publique quando quiser colocá-la no mural público.</p><button type="button" className="text-button" onClick={onOpen} data-testid="button-how-to-post">Escrever agora <ArrowRight size={13} /></button></div></aside></div>
+      <div className="feed-layout"><div className="feed-main"><div className="device-banner"><Info size={15} /><span>Mural público sincronizado no Cloud Firestore. Você pode curtir, comentar e recompartilhar reflexões.</span></div><div className="feed-toolbar" style={{ marginTop: 14 }}><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar no mural..." data-testid="input-search-feed" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar mural por livro" data-testid="select-feed-book"><option value="todos">Todos os livros</option>{booksInFeed.map((item, idx) => <option key={`feed-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar mural por etiqueta" data-testid="select-feed-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`feed-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'reflexão no mural' : 'reflexões no mural'}</div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Nada apareceu ainda" text="Tente outra palavra ou publique uma reflexão a partir do que está lendo." action="Abrir compositor" onAction={onOpen} />}</div><aside className="feed-aside"><DraftPanel annotations={annotations} onEdit={onEdit} /><div className="paper-card side-panel"><h3>Como funciona</h3><p className="side-panel-intro">Finalize uma anotação quando ela ganhar forma. Publique quando quiser colocá-la no mural público.</p><button type="button" className="text-button" onClick={onOpen} data-testid="button-how-to-post">Escrever agora <ArrowRight size={13} /></button></div></aside></div>
     </section>
   );
 }
@@ -1385,7 +1427,7 @@ function MyAnnotations({
     return scoped && matchesAnnotation(annotation, search, tag, book);
   }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const counts = { all: annotations.length, drafts: annotations.filter((item) => item.status === 'draft').length, finalized: annotations.filter((item) => item.status === 'finalized').length, published: annotations.filter((item) => item.published).length };
-  return <section className="page"><div className="eyebrow">o que você já percebeu</div><div className="notes-header"><div><h1 className="page-title">Minhas anotações</h1><p className="page-intro">Um índice vivo das conversas que você tem tido com a Escritura.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-add-note-list"><Plus size={15} /> Nova anotação</button></div><div className="scope-tabs">{([['all', 'Todas'], ['drafts', 'Rascunhos'], ['finalized', 'Finalizadas'], ['published', 'No mural']] as [typeof scope, string][]).map(([key, label]) => <button type="button" className={`scope-tab ${scope === key ? 'active' : ''}`} onClick={() => setScope(key)} key={key} data-testid={`tab-notes-${key}`}>{label} <span>{counts[key]}</span></button>)}</div><div className="notes-filter-row"><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, frase, passagem ou etiqueta..." data-testid="input-search-notes" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar anotações por livro" data-testid="select-notes-book"><option value="todos">Todos os livros</option>{booksInNotes.map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar anotações por etiqueta" data-testid="select-notes-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item) => <option key={item} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</div><div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Nenhuma anotação encontrada" text="Tente remover um filtro ou buscar por outra palavra." action="Limpar busca" onAction={() => { setSearch(''); setTag('todos'); setBook('todos'); }} />}</div></section>;
+  return <section className="page"><div className="eyebrow">o que você já percebeu</div><div className="notes-header"><div><h1 className="page-title">Minhas anotações</h1><p className="page-intro">Um índice vivo das conversas que você tem tido com a Escritura.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-add-note-list"><Plus size={15} /> Nova anotação</button></div><div className="scope-tabs">{([['all', 'Todas'], ['drafts', 'Rascunhos'], ['finalized', 'Finalizadas'], ['published', 'No mural']] as [typeof scope, string][]).map(([key, label]) => <button type="button" className={`scope-tab ${scope === key ? 'active' : ''}`} onClick={() => setScope(key)} key={key} data-testid={`tab-notes-${key}`}>{label} <span>{counts[key]}</span></button>)}</div><div className="notes-filter-row"><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, frase, passagem ou etiqueta..." data-testid="input-search-notes" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar anotações por livro" data-testid="select-notes-book"><option value="todos">Todos os livros</option>{booksInNotes.map((item, idx) => <option key={`notes-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar anotações por etiqueta" data-testid="select-notes-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`notes-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</div><div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Nenhuma anotação encontrada" text="Tente remover um filtro ou buscar por outra palavra." action="Limpar busca" onAction={() => { setSearch(''); setTag('todos'); setBook('todos'); }} />}</div></section>;
 }
 
 function matchesAnnotation(annotation: Annotation, search: string, tag: string, book: string) {
@@ -1707,7 +1749,9 @@ function PreferencesView({ preferences, onPreferences, annotations, saved, onCle
   );
 }
 
-function AnnotationComposer({ annotation, initialReference, annotations, onCancel, onPersist }: { annotation?: Annotation; initialReference?: BibleReference; annotations: Annotation[]; onCancel: () => void; onPersist: (draft: AnnotationDraft, editingId?: string, reason?: string) => void }) {
+function AnnotationComposer({ annotation, initialReference, annotations, onCancel, onPersist }: { annotation?: Annotation; initialReference?: BibleReference; annotations: Annotation[]; onCancel: () => void; onPersist: (draft: AnnotationDraft, editingId?: string, reason?: string) => string | void }) {
+  const [activeId, setActiveId] = useState<string | undefined>(annotation?.id);
+  const [autoSaveLabel, setAutoSaveLabel] = useState<string>('');
   const [title, setTitle] = useState(annotation?.title ?? '');
   const [mainPoint, setMainPoint] = useState(annotation?.mainPoint ?? '');
   const [phrases, setPhrases] = useState<string[]>(annotation?.phrases ?? []);
@@ -1760,11 +1804,28 @@ function AnnotationComposer({ annotation, initialReference, annotations, onCance
     favorite: annotation?.favorite ?? false,
     linkedAnnotationIds: linkedIds
   });
+
+  // 5-second automatic save timer for active edits
+  useEffect(() => {
+    if (!title.trim() && !mainPoint.trim() && !phrases.length && !references.length && !tags.length) return;
+    const timer = setInterval(() => {
+      const draft = buildDraft(status, published);
+      const savedId = onPersist(draft, activeId, 'autosave');
+      if (typeof savedId === 'string' && savedId && !activeId) {
+        setActiveId(savedId);
+      }
+      setAutoSaveLabel('Salvo automaticamente');
+      setTimeout(() => setAutoSaveLabel(''), 2000);
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [title, mainPoint, phrases, references, tags, color, status, published, linkedIds, activeId]);
+
   const persistAndClose = (reason?: string, nextStatus?: AnnotationStatus, nextPublished?: boolean) => {
     const safeReason = typeof reason === 'string' ? reason : 'save';
     const safeStatus = typeof nextStatus === 'string' ? (nextStatus as AnnotationStatus) : status;
     const safePublished = typeof nextPublished === 'boolean' ? nextPublished : published;
-    onPersist(buildDraft(safeStatus, safePublished), annotation?.id, safeReason);
+    onPersist(buildDraft(safeStatus, safePublished), activeId, safeReason);
   };
   const closeWithoutLoss = () => { if (meaningful) persistAndClose('close'); else onCancel(); };
 
