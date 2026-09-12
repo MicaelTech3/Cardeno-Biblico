@@ -1177,49 +1177,81 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
       <Sidebar view={view} onNavigate={onNavigate} annotationsCount={myAnnotations.length} tags={allTags} currentUser={currentUser} />
       <main className={`main-area ${isBottomNav ? 'has-bottom-nav' : ''}`}>
         <header className="topbar">
-          <div className="mobile-brand" onClick={() => onNavigate('overview')} style={{ cursor: 'pointer' }}>
-            <div className="brand-mark"><CadernoLogo /></div>
-          </div>
-          <div className="top-actions">
-            {/* Corner Action: Notification Bell, and conditionally Home/Menu if not Modo B */}
-            <div className="top-corner-group" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {!isBottomNav && (
-                <>
-                  <button 
-                    type="button" 
-                    className="icon-button" 
-                    onClick={() => onNavigate('overview')} 
-                    title="Ir para o início (Visão geral)" 
-                    aria-label="Ir para o início" 
-                    data-testid="button-home"
-                  >
-                    <Home size={18} />
-                  </button>
-                  <div className="mobile-menu-wrap">
-                    <button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav((open) => !open)} aria-label={mobileNav ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileNav} data-testid="button-open-menu">
-                      {mobileNav ? <X size={18} /> : <Menu size={18} />}
-                    </button>
-                    {mobileNav && (
-                      <>
-                        <div className="mobile-menu-backdrop" onClick={() => setMobileNav(false)} />
-                        <MobileMenuPanel view={view} onNavigate={(next) => { onNavigate(next); setMobileNav(false); }} currentUser={currentUser} onOpenProfile={(author) => { setActiveProfile(author); setMobileNav(false); }} />
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
+          <div className="mobile-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <div className="brand-mark" onClick={() => onNavigate('overview')} title="Visão Geral">
+              <CadernoLogo />
+            </div>
+            <span 
+              className="brand-word-title" 
+              onClick={() => onNavigate('overview')} 
+              style={{ fontFamily: 'var(--app-font-serif)', fontSize: '18px', fontWeight: 600, letterSpacing: '-0.03em', color: 'hsl(var(--foreground))' }}
+            >
+              Caderno Bíblico
+            </span>
 
-              {/* Notification Bell Button & Popover (Always present at top) */}
+            {/* Icons starting immediately beside logo in Modo A */}
+            {!isBottomNav && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
+                <button 
+                  type="button" 
+                  className={`icon-button ${view === 'overview' ? 'active' : ''}`}
+                  onClick={() => onNavigate('overview')} 
+                  title="Início (Visão geral)" 
+                  aria-label="Início" 
+                  data-testid="button-home"
+                >
+                  <Home size={18} />
+                </button>
+
+                <button 
+                  type="button" 
+                  className={`icon-button ${view === 'notes' ? 'active' : ''}`}
+                  onClick={() => onNavigate('notes')} 
+                  title="Minhas Anotações" 
+                  aria-label="Minhas Anotações" 
+                  data-testid="button-notes"
+                >
+                  <FileText size={18} />
+                </button>
+
+                <button 
+                  type="button" 
+                  className={`icon-button ${view === 'feed' ? 'active' : ''}`}
+                  onClick={() => onNavigate('feed')} 
+                  title="Mural de Reflexões" 
+                  aria-label="Mural" 
+                  data-testid="button-feed"
+                >
+                  <PenLine size={18} />
+                </button>
+
+                <button 
+                  type="button" 
+                  className={`icon-button ${view === 'profiles' ? 'active' : ''}`}
+                  onClick={() => onNavigate('profiles')} 
+                  title="Buscar Escritores" 
+                  aria-label="Escritores" 
+                  data-testid="button-profiles"
+                >
+                  <Users size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="top-actions">
+            <div className="top-corner-group" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Notification Bell Button & Popover at top */}
               <div style={{ position: 'relative' }}>
                 <button 
                   type="button" 
-                  className="icon-button notification-bell-btn" 
+                  className={`icon-button notification-bell-btn ${showNotifications ? 'active' : ''}`} 
                   onClick={() => setShowNotifications(!showNotifications)} 
                   aria-label="Notificações" 
                   title="Notificações"
                   data-testid="button-open-notifications"
                 >
-                  <Bell size={17} />
+                  <Bell size={18} />
                   {unreadCount > 0 && (
                     <span className="notification-badge-dot">{unreadCount}</span>
                   )}
@@ -1233,6 +1265,59 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
                   />
                 )}
               </div>
+
+              {/* Botão de Configurações no Topo */}
+              <button 
+                type="button" 
+                className="icon-button" 
+                onClick={() => onNavigate('preferences')} 
+                aria-label="Abrir preferências" 
+                title="Configurações"
+                data-testid="button-open-settings"
+              >
+                <Settings size={18} />
+              </button>
+
+              {/* Botão de Sair no Topo */}
+              <button 
+                type="button" 
+                className="icon-button danger-button" 
+                onClick={() => {
+                  if (window.confirm('Deseja realmente sair da sua conta?')) {
+                    logoutFirebase();
+                  }
+                }} 
+                aria-label="Sair da conta" 
+                title="Sair da conta"
+                data-testid="button-top-logout"
+              >
+                <LogOut size={18} />
+              </button>
+
+              {/* Perfil no canto direito (Modo A) */}
+              {!isBottomNav && (
+                <button 
+                  type="button" 
+                  className="icon-button"
+                  onClick={() => {
+                    if (currentUser) {
+                      const name = currentUser.displayName || currentUser.email?.split('@')[0] || 'Meu caderno';
+                      setActiveProfile({ authorId: currentUser.uid, authorName: name, authorPhoto: currentUser.photoURL || undefined });
+                    } else {
+                      onNavigate('profiles');
+                    }
+                  }} 
+                  title="Meu Perfil" 
+                  aria-label="Meu Perfil" 
+                  data-testid="button-profile"
+                >
+                  {currentUser?.photoURL ? (
+                    <img src={currentUser.photoURL} alt="Perfil" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    <User size={18} />
+                  )}
+                </button>
+              )}
             </div>
 
             <button
@@ -1261,7 +1346,6 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
             >
               <span style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'var(--app-font-serif)' }}>A+</span>
             </button>
-            <button type="button" className="icon-button desktop-header-control" onClick={() => onNavigate('preferences')} aria-label="Abrir preferências" data-testid="button-open-settings"><Settings size={17} /></button>
             <div className="desktop-account"><AccountMenu currentUser={currentUser} onOpenProfile={setActiveProfile} /></div>
           </div>
         </header>
@@ -2743,66 +2827,66 @@ function ConfirmDelete({ annotation, onCancel, onConfirm }: { annotation: Annota
 function InstagramBottomNav({
   view,
   onNavigate,
-  onOpenComposer,
   currentUser,
   onOpenProfile
 }: {
   view: View;
   onNavigate: (view: View) => void;
-  onOpenComposer: () => void;
+  onOpenComposer?: () => void;
   currentUser: FirebaseUser | null;
   onOpenProfile: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void;
 }) {
   const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno';
 
   return (
-    <nav className="instagram-bottom-nav">
+    <nav className="floating-glass-menu" data-testid="floating-bottom-nav">
       <button
         type="button"
-        className={`instagram-nav-item ${view === 'overview' ? 'active' : ''}`}
+        className={`floating-menu-item ${view === 'overview' ? 'active' : ''}`}
         onClick={() => onNavigate('overview')}
-        title="Visão geral"
+        title="Início (Visão Geral)"
         data-testid="bottom-nav-overview"
       >
-        <Home size={20} />
+        <Home size={19} />
         <span>Início</span>
       </button>
 
       <button
         type="button"
-        className={`instagram-nav-item ${view === 'feed' ? 'active' : ''}`}
+        className={`floating-menu-item ${view === 'notes' ? 'active' : ''}`}
+        onClick={() => onNavigate('notes')}
+        title="Minhas anotações"
+        data-testid="bottom-nav-notes"
+      >
+        <FileText size={19} />
+        <span>Anotações</span>
+      </button>
+
+      <button
+        type="button"
+        className={`floating-menu-item ${view === 'feed' ? 'active' : ''}`}
         onClick={() => onNavigate('feed')}
         title="Mural de reflexões"
         data-testid="bottom-nav-feed"
       >
-        <PenLine size={20} />
+        <PenLine size={19} />
         <span>Mural</span>
       </button>
 
       <button
         type="button"
-        className="instagram-nav-item accent-plus-btn"
-        onClick={onOpenComposer}
-        title="Nova anotação"
-        data-testid="bottom-nav-composer"
+        className={`floating-menu-item ${view === 'profiles' ? 'active' : ''}`}
+        onClick={() => onNavigate('profiles')}
+        title="Buscar escritores"
+        data-testid="bottom-nav-profiles"
       >
-        <Plus size={24} />
+        <Users size={19} />
+        <span>Escritores</span>
       </button>
 
       <button
         type="button"
-        className={`instagram-nav-item ${view === 'reader' ? 'active' : ''}`}
-        onClick={() => onNavigate('reader')}
-        title="Ler a Bíblia"
-        data-testid="bottom-nav-reader"
-      >
-        <BookOpen size={20} />
-        <span>Bíblia</span>
-      </button>
-
-      <button
-        type="button"
-        className={`instagram-nav-item ${view === 'profiles' ? 'active' : ''}`}
+        className="floating-menu-item"
         onClick={() => {
           if (currentUser) {
             onOpenProfile({ authorId: currentUser.uid, authorName: name, authorPhoto: currentUser.photoURL || undefined });
@@ -2810,13 +2894,13 @@ function InstagramBottomNav({
             onNavigate('profiles');
           }
         }}
-        title="Meu Perfil / Escritores"
+        title="Meu Perfil"
         data-testid="bottom-nav-profile"
       >
         {currentUser?.photoURL ? (
-          <img src={currentUser.photoURL} alt={name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+          <img src={currentUser.photoURL} alt={name} style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
         ) : (
-          <User size={20} />
+          <User size={19} />
         )}
         <span>Perfil</span>
       </button>

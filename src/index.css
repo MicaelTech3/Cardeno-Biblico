@@ -156,6 +156,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .mobile-brand { display: none; }.topbar-note { color: hsl(var(--muted-foreground)); font-size: 12px; }.top-actions { display: flex; align-items: center; gap: 9px; }.below-header-actions { max-width: 1180px; margin: 9px auto 0; display: flex; justify-content: flex-end; }.below-header-bible { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid hsl(var(--border)); border-radius: 9px; padding: 9px 13px; background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 3px 0 hsl(var(--border) / .45); font-size: 11px; font-weight: 700; }.below-header-bible:hover { border-color: hsl(var(--accent) / .55); background: hsl(var(--accent) / .08); color: hsl(var(--accent)); transform: translateY(-1px); }
 .icon-button { width: 37px; height: 37px; display: grid; place-items: center; background: transparent; border: 1px solid transparent; border-radius: 10px; color: hsl(var(--muted-foreground)); transition: background .2s, border-color .2s, color .2s, transform .2s; }
 .icon-button:hover { background: hsl(var(--card)); border-color: hsl(var(--border)); color: hsl(var(--foreground)); transform: translateY(-1px); }
+.icon-button.active { background: hsl(var(--accent) / .14); border-color: hsl(var(--accent) / .3); color: hsl(var(--accent)); }
 .page { max-width: 1180px; margin: 0 auto; padding-top: 43px; }
 .eyebrow { color: hsl(var(--accent)); font-family: var(--app-font-mono); font-size: 10px; letter-spacing: .15em; text-transform: uppercase; }
 .page-title { font-family: var(--app-font-serif); font-weight: 600; letter-spacing: -.055em; font-size: clamp(36px, 4vw, 55px); line-height: 1.02; margin: 10px 0 0; }
@@ -886,71 +887,91 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border-color: hsl(var(--accent) / 0.5);
 }
 
-/* Instagram-Style Bottom Navigation Bar (Modo B) */
-.instagram-bottom-nav {
+/* Floating Glass Capsule Navigation Bar (Modo B) */
+.floating-glass-menu, .instagram-bottom-nav {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 62px;
-  background: hsl(var(--card) / 0.96);
-  backdrop-filter: blur(16px);
-  border-top: 1px solid hsl(var(--border));
+  left: 50%;
+  bottom: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 480px;
+  backdrop-filter: blur(14px) saturate(180%) contrast(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%) contrast(150%);
+  background: hsl(var(--card) / 0.82);
+  border: 1px solid hsl(var(--border) / 0.7);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  padding: 5px 8px;
+  border-radius: 9999px;
   display: flex;
-  align-items: center;
   justify-content: space-around;
-  z-index: 999;
-  padding: 0 8px;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+  align-items: center;
+  z-index: 990;
 }
 
-.instagram-nav-item {
+.floating-glass-menu::after, .instagram-bottom-nav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 2px 2px 5px -2px rgba(255, 255, 255, 0.35),
+    inset -2px -2px 5px 2px rgba(255, 255, 255, 0.15),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.floating-menu-item, .instagram-nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: none;
+  flex: 1 1 0;
+  min-width: 0;
   color: hsl(var(--muted-foreground));
+  text-decoration: none;
+  padding: 8px 4px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
   cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 12px;
-  transition: color 0.18s ease, transform 0.15s ease;
-  position: relative;
-  font-size: 10px;
-  font-weight: 500;
-  gap: 2px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.2s ease;
 }
 
-.instagram-nav-item.active {
+.floating-menu-item:hover, .instagram-nav-item:hover {
+  background: hsl(var(--accent) / 0.12);
+  color: hsl(var(--accent));
+  transform: translateY(-2px);
+}
+
+.floating-menu-item svg, .instagram-nav-item svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.floating-menu-item span, .instagram-nav-item span {
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+
+.floating-menu-item.active, .instagram-nav-item.active {
+  background: hsl(var(--accent) / 0.18);
   color: hsl(var(--accent));
   font-weight: 700;
+  box-shadow: inset 0 0 0 1px hsl(var(--accent) / 0.35);
 }
 
-.instagram-nav-item:hover {
-  color: hsl(var(--accent));
-}
-
-.instagram-nav-item.accent-plus-btn {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground)) !important;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 6px 18px hsl(var(--accent) / 0.35);
-  margin-top: -14px;
-}
-
-.instagram-nav-item.accent-plus-btn:hover {
-  transform: scale(1.08);
+.floating-menu-item:active, .instagram-nav-item:active {
+  transform: scale(0.95);
 }
 
 .has-bottom-nav {
-  padding-bottom: 76px !important;
+  padding-bottom: 82px !important;
 }
 
 .notif-item {
