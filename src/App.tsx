@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type ReactNode, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
 import {
   Archive,
   ArrowRight,
@@ -28,6 +28,9 @@ import {
   Plus,
   Repeat,
   Search,
+  Send,
+  Copy,
+  Share2,
   Settings,
   Sparkles,
   Trash2,
@@ -184,6 +187,23 @@ type SavedPassage = {
   color: ColorName;
 };
 
+type SharedNote = {
+  id: string;
+  originalNoteId: string;
+  senderId: string;
+  senderName: string;
+  senderPhoto?: string;
+  recipientId: string;
+  recipientName: string;
+  title: string;
+  mainPoint: string;
+  phrases: string[];
+  references: BibleReference[];
+  tags: string[];
+  color: ColorName;
+  createdAt: string;
+};
+
 type SystemFontSize = 'small' | 'medium' | 'large' | 'xlarge';
 type NavigationMode = 'top' | 'bottom';
 
@@ -209,7 +229,7 @@ type View = 'overview' | 'feed' | 'notes' | 'reader' | 'preferences' | 'profiles
 type AppNotification = {
   id: string;
   recipientId?: string;
-  type: 'follow' | 'like' | 'repost' | 'comment' | 'unfinished';
+  type: 'follow' | 'like' | 'repost' | 'comment' | 'unfinished' | 'send';
   title: string;
   message: string;
   createdAt: string;
@@ -913,6 +933,45 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
     }
   }, []);
 
+  // Shared notes state & Firestore synchronization
+  const [sharedNotes, setSharedNotes] = useState<SharedNote[]>(() => {
+    try {
+      const raw = window.localStorage.getItem('cb_shared_notes');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const unsubscribe = onSnapshot(
+        collection(db, 'shared_notes'),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteShared: SharedNote[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteShared.push(docSnap.data() as SharedNote);
+            });
+            setSharedNotes(remoteShared);
+          }
+        },
+        (err) => {
+          console.warn('Firestore shared_notes sync status:', err.message);
+        }
+      );
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Firestore shared_notes listener error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('cb_shared_notes', JSON.stringify(sharedNotes));
+    } catch (e) {}
+  }, [sharedNotes]);
+
   useEffect(() => {
     try {
       const clean = sanitizeForFirestore(annotations);
@@ -1166,32 +1225,125 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+  const isBottomNav = (preferences.navigationMode || 'top') === 'bottom';
   const [isNavVisible, setIsNavVisible] = useState(true);
+  const navTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [sendNoteTarget, setSendNoteTarget] = useState<Annotation | null>(null);
+  const [closedWithoutChoiceIds, setClosedWithoutChoiceIds] = useState<string[]>([]);
+  const [showDraftsMenu, setShowDraftsMenu] = useState(false);
+
+  // Active unfinished draft notes where modal was closed without explicit choice
+  const closedWithoutChoiceDrafts = useMemo(() => {
+    return myAnnotations.filter((a) => a.status === 'draft' && closedWithoutChoiceIds.includes(a.id));
+  }, [myAnnotations, closedWithoutChoiceIds]);
+
+  const handleSendNote = (annotation: Annotation, recipientId: string, recipientName: string) => {
+    const shared: SharedNote = {
+      id: makeId('shared'),
+      originalNoteId: annotation.id,
+      senderId: currentUser?.uid || 'guest',
+      senderName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno',
+      senderPhoto: currentUser?.photoURL || undefined,
+      recipientId,
+      recipientName,
+      title: annotation.title,
+      mainPoint: annotation.mainPoint,
+      phrases: annotation.phrases,
+      references: annotation.references,
+      tags: annotation.tags,
+      color: annotation.color,
+      createdAt: new Date().toISOString()
+    };
+
+    setSharedNotes((prev) => [shared, ...prev]);
+    safeSetDoc(doc(db, 'shared_notes', shared.id), shared).catch((e) => console.error(e));
+    pushRealNotification(
+      recipientId,
+      'send',
+      'Nota recebida',
+      `@${shared.senderName} enviou uma anotação para você: "${annotation.title}"`,
+      shared.senderName,
+      shared.senderPhoto,
+      annotation.id
+    );
+    showToast(`Anotação enviada para @${recipientName}!`);
+    setSendNoteTarget(null);
+  };
+
+  const handleAdoptSharedNote = (shared: SharedNote) => {
+    const draft: AnnotationDraft = {
+      authorName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno',
+      authorInitial: (currentUser?.displayName || 'M')[0].toUpperCase(),
+      authorPhoto: currentUser?.photoURL || undefined,
+      title: `[Cópia de @${shared.senderName}] ${shared.title}`,
+      mainPoint: shared.mainPoint,
+      phrases: shared.phrases,
+      references: shared.references,
+      tags: [...shared.tags, 'compartilhado'],
+      color: shared.color,
+      status: 'draft',
+      published: false,
+      favorite: false,
+      linkedAnnotationIds: []
+    };
+
+    const targetId = persistAnnotation(draft, undefined, 'save');
+    showToast('Cópia adicionada ao seu caderno! Você já pode editá-la.');
+    if (targetId) {
+      const created = annotations.find((a) => a.id === targetId) || { ...draft, id: targetId, authorId: currentUser?.uid || 'guest', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      editComposer(created as Annotation);
+    }
+  };
+
+  const resetNavTimer = useCallback(() => {
+    setIsNavVisible(true);
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    navTimerRef.current = setTimeout(() => {
+      setIsNavVisible(false);
+    }, 4000);
+  }, []);
 
   useEffect(() => {
     let lastScrollY = window.scrollY;
+
+    const isEditingText = () => {
+      const active = document.activeElement;
+      if (!active) return false;
+      const tag = active.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || active.isContentEditable || active.closest('.editor') !== null;
+    };
+
     const handleScroll = () => {
+      if (isEditingText() || composer) return;
+
       const currentScrollY = window.scrollY;
       const diff = currentScrollY - lastScrollY;
-      if (diff > 12 && currentScrollY > 50) {
+      if (diff > 15 && currentScrollY > 50) {
         setIsNavVisible(false);
+        if (navTimerRef.current) clearTimeout(navTimerRef.current);
       } else if (diff < -8 || currentScrollY < 30) {
-        setIsNavVisible(true);
+        resetNavTimer();
       }
       lastScrollY = currentScrollY;
     };
 
-    const handleInteraction = () => {
-      setIsNavVisible(true);
+    const handleInteraction = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (isEditingText() || target?.closest('.composer-sheet, .modal, .notifications-popover')) return;
+      resetNavTimer();
     };
+
+    resetNavTimer();
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('pointerdown', handleInteraction, { passive: true });
     return () => {
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('pointerdown', handleInteraction);
     };
-  }, []);
+  }, [composer, resetNavTimer]);
 
   if (!currentUser) {
     return <PublicWelcome />;
@@ -1304,26 +1456,177 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           <button type="button" className="below-header-bible" onClick={() => onNavigate('reader')} data-testid="button-header-bible"><BookOpen size={14} /> Bíblia</button>
           <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> Nova anotação</button>
         </div>
-        {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
-        {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
-        {view === 'notes' && <MyAnnotations annotations={myAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
+        {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} />}
+        {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} />}
+        {view === 'notes' && <MyAnnotations annotations={myAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} />}
         {view === 'profiles' && <ProfilesView annotations={annotations} currentUser={currentUser} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onOpenProfile={setActiveProfile} />}
         {view === 'reader' && <BibleReader books={books} preferences={preferences} annotations={myAnnotations} saved={saved} onPreferences={updatePreferences} onOpen={openComposer} onSavePassage={handleToggleSavedPassage} />}
         {view === 'preferences' && <PreferencesView preferences={preferences} onPreferences={updatePreferences} annotations={myAnnotations} saved={saved} onClear={() => { if (window.confirm('Apagar as anotações e passagens deste dispositivo?')) { setAnnotations([]); setSaved([]); showToast('Dados locais apagados.'); } }} />}
       </main>
 
-      <InstagramBottomNav 
-        view={view} 
-        onNavigate={onNavigate} 
-        onOpenComposer={() => openComposer()} 
-        currentUser={currentUser} 
-        onOpenProfile={setActiveProfile} 
-        isNavVisible={isNavVisible}
-      />
+      {/* Small floating trigger button when bottom nav auto-hides */}
+      {!isNavVisible && !composer && !activeProfile && !confirmDelete && !activeVersePreview && (
+        <button
+          type="button"
+          className="floating-nav-trigger"
+          onClick={() => resetNavTimer()}
+          title="Abrir navegação"
+          aria-label="Abrir navegação"
+          data-testid="button-floating-nav-trigger"
+        >
+          <Grid size={18} />
+        </button>
+      )}
 
-      {composer && <AnnotationComposer annotation={composer.annotation} initialReference={composer.initialReference} annotations={annotations} onCancel={() => setComposer(undefined)} onPersist={persistAnnotation} />}
+      {/* Inspirational Floating Active Study Badge */}
+      {closedWithoutChoiceDrafts.length > 0 && !composer && !activeProfile && !confirmDelete && !activeVersePreview && (
+        <div style={{ position: 'fixed', right: 18, bottom: 80, zIndex: 970 }}>
+          <button
+            type="button"
+            className="floating-draft-badge"
+            onClick={() => {
+              if (closedWithoutChoiceDrafts.length === 1) {
+                editComposer(closedWithoutChoiceDrafts[0]);
+              } else {
+                setShowDraftsMenu(!showDraftsMenu);
+              }
+            }}
+            title={closedWithoutChoiceDrafts.length === 1 ? `Continuar estudo: "${closedWithoutChoiceDrafts[0].title || 'Bloco sem título'}"` : `${closedWithoutChoiceDrafts.length} estudos em andamento`}
+            data-testid="button-floating-draft-badge"
+          >
+            <div className="study-badge-circle-icon">
+              <BookOpen size={15} />
+            </div>
+            <div className="floating-draft-info">
+              <span className="floating-draft-label">
+                {closedWithoutChoiceDrafts.length === 1 ? 'Estudo em andamento' : `${closedWithoutChoiceDrafts.length} estudos em andamento`}
+              </span>
+              <span className="floating-draft-title">
+                {closedWithoutChoiceDrafts.length === 1 
+                  ? (closedWithoutChoiceDrafts[0].title || 'Bloco sem título') 
+                  : 'Clique para escolher e concluir'}
+              </span>
+            </div>
+            {closedWithoutChoiceDrafts.length > 1 && <ChevronRight size={14} style={{ transform: showDraftsMenu ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />}
+          </button>
+
+          {/* Inspirational Menu list if multiple drafts are pending */}
+          {showDraftsMenu && closedWithoutChoiceDrafts.length > 1 && (
+            <div
+              className="paper-card"
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 10px)',
+                right: 0,
+                width: 280,
+                padding: 14,
+                boxShadow: '0 16px 44px rgba(0,0,0,0.28)',
+                borderRadius: 16,
+                border: '1px solid hsl(var(--border))',
+                zIndex: 980,
+                animation: 'rise 0.2s ease both'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '11px', fontWeight: 700, color: 'hsl(var(--accent))', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <Clock size={13} /> Seus blocos para concluir
+              </div>
+              <div style={{ display: 'grid', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                {closedWithoutChoiceDrafts.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="draft-link"
+                    style={{ 
+                      textAlign: 'left', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 10, 
+                      width: '100%', 
+                      padding: '8px 10px', 
+                      borderRadius: 10, 
+                      background: 'hsl(var(--muted) / 0.4)',
+                      border: '1px solid hsl(var(--border) / 0.5)',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s ease'
+                    }}
+                    onClick={() => {
+                      setShowDraftsMenu(false);
+                      editComposer(d);
+                    }}
+                  >
+                    <div className={`color-choice ${d.color || 'terracotta'}`} style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Bloco sem título'}</div>
+                      <div style={{ fontSize: '10px', color: 'hsl(var(--muted-foreground))' }}>Clique para retomar e concluir</div>
+                    </div>
+                    <ChevronRight size={13} color="hsl(var(--muted-foreground))" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!composer && !activeProfile && !confirmDelete && !activeVersePreview && (
+        <InstagramBottomNav 
+          view={view} 
+          onNavigate={onNavigate} 
+          onOpenComposer={() => openComposer()} 
+          currentUser={currentUser} 
+          onOpenProfile={setActiveProfile} 
+          isNavVisible={isNavVisible}
+        />
+      )}
+
+      {composer && (
+        <AnnotationComposer 
+          annotation={composer.annotation} 
+          initialReference={composer.initialReference} 
+          annotations={annotations} 
+          onCancel={() => setComposer(undefined)} 
+          onPersist={persistAnnotation}
+          onChoiceMade={(id) => {
+            setClosedWithoutChoiceIds(prev => prev.filter(x => x !== id));
+          }}
+          onClosedWithoutChoice={(id) => {
+            setClosedWithoutChoiceIds(prev => Array.from(new Set([...prev, id])));
+          }}
+        />
+      )}
       {confirmDelete && <ConfirmDelete annotation={confirmDelete} onCancel={() => setConfirmDelete(null)} onConfirm={removeAnnotation} />}
-      {activeProfile && <UserProfileModal profile={activeProfile} annotations={annotations} onClose={() => setActiveProfile(null)} onNavigate={onNavigate} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} />}
+      {activeProfile && (
+        <UserProfileModal 
+          profile={activeProfile} 
+          annotations={annotations} 
+          sharedNotes={sharedNotes}
+          onClose={() => setActiveProfile(null)} 
+          onNavigate={onNavigate} 
+          onEdit={editComposer} 
+          onDelete={setConfirmDelete} 
+          onFavorite={toggleFavorite} 
+          onReference={openReference} 
+          onLike={handleLike} 
+          onAddComment={handleAddComment} 
+          onRepost={handleRepost}
+          onSendNote={(annotation) => setSendNoteTarget(annotation)}
+          onAdoptSharedNote={handleAdoptSharedNote}
+          currentUser={currentUser} 
+          followedUsers={followedUsers} 
+          onToggleFollow={handleToggleFollow} 
+        />
+      )}
+      {sendNoteTarget && (
+        <SendNoteModal 
+          annotation={sendNoteTarget} 
+          currentUser={currentUser} 
+          followedUsers={followedUsers} 
+          annotations={annotations} 
+          onClose={() => setSendNoteTarget(null)} 
+          onSend={(recipientId, recipientName) => handleSendNote(sendNoteTarget, recipientId, recipientName)} 
+        />
+      )}
       {activeVersePreview && <VersePreviewModal reference={activeVersePreview} onClose={() => setActiveVersePreview(null)} onOpenBible={openReference} />}
       {toast && <div className="toast" role="status" data-testid="status-toast">{toast}</div>}
     </div>
@@ -1394,7 +1697,8 @@ function Overview({
   onOpenProfile,
   onSelectReferencePreview,
   followedUsers,
-  onToggleFollow
+  onToggleFollow,
+  onSendNote
 }: { 
   annotations: Annotation[]; 
   saved: SavedPassage[]; 
@@ -1403,7 +1707,7 @@ function Overview({
   onEdit: (annotation: Annotation) => void; 
   onDelete: (annotation: Annotation) => void; 
   onFavorite: (id: string) => void; 
-  onReference: (reference: BibleReference) => void;
+  onReference: (reference: BibleReference) => void; 
   onLike: (id: string) => void;
   onAddComment: (id: string, text: string) => void;
   onRepost: (annotation: Annotation) => void;
@@ -1412,6 +1716,7 @@ function Overview({
   onSelectReferencePreview?: (reference: BibleReference) => void;
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
+  onSendNote?: (annotation: Annotation) => void;
 }) {
   const { user } = useAppUser();
   const recent = annotations.slice().sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3);
@@ -1425,7 +1730,7 @@ function Overview({
       <div className="eyebrow">quarta-feira, 20 de março</div><h1 className="page-title">Bom dia, {formattedGreetingName}.</h1><p className="page-intro">Uma ideia não precisa chegar pronta. Deixe sua leitura aberta aqui e volte quando uma nova frase aparecer.</p>
       <div className="overview-hero"><div className="paper-card prompt-card"><div className="prompt-kicker">Uma pergunta para hoje</div><div className="prompt-text">O que este texto revela sobre o coração de Deus?</div><button type="button" className="prompt-action" onClick={onOpen} data-testid="button-prompt-note">Começar uma reflexão <ArrowRight size={14} /></button></div><div className="paper-card stats-card"><div className="stats-heading"><h2>Seu caderno</h2><BookOpen className="stats-icon" size={19} /></div><div><div className="stats-big"><span className="stats-num" data-testid="text-note-count">{annotations.length}</span><span className="stats-caption">anotações feitas</span></div><div className="progress-track"><div className="progress-value" style={{ width: `${Math.min(100, Math.max(8, annotations.length * 14))}%` }} /></div><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}><span className="stats-caption">{published} no mural</span><span className="stats-caption">{drafts.length} em andamento</span></div></div></div></div>
       <div className="section-head"><div><h2 className="section-title">Últimas anotações</h2><p className="section-meta">O fio mais recente da sua leitura</p></div><button type="button" className="text-button" onClick={() => onNavigate('notes')} data-testid="button-see-all-notes">Ver todas <ArrowRight size={14} /></button></div>
-      <div className="overview-columns"><div>{recent.length ? recent.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Seu caderno está aberto" text="A primeira frase pode ser simples. Comece escrevendo o que ficou com você." action="Fazer primeira anotação" onAction={onOpen} />}</div><div className="side-stack"><SavedPanel saved={saved} onNavigate={onNavigate} /><div className="paper-card side-panel"><h3>Continue de onde parou</h3><p className="side-panel-intro">{drafts.length ? 'Há ideias esperando uma nova visita.' : 'Escolha uma passagem e deixe a leitura conduzir a próxima anotação.'}</p>{drafts.slice(0, 2).map((draft) => <button type="button" className="reading-link" key={draft.id} onClick={() => onEdit(draft)} data-testid={`button-resume-${draft.id}`}><span>{draft.title}</span><ChevronRight size={14} /></button>)}{!drafts.length && <button type="button" className="reading-link" onClick={() => onNavigate('reader')} data-testid="button-open-reading"><span>Explorar capítulos</span><ChevronRight size={14} /></button>}</div></div></div>
+      <div className="overview-columns"><div>{recent.length ? recent.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title="Seu caderno está aberto" text="A primeira frase pode ser simples. Comece escrevendo o que ficou com você." action="Fazer primeira anotação" onAction={onOpen} />}</div><div className="side-stack"><SavedPanel saved={saved} onNavigate={onNavigate} /><div className="paper-card side-panel"><h3>Continue de onde parou</h3><p className="side-panel-intro">{drafts.length ? 'Há ideias esperando uma nova visita.' : 'Escolha uma passagem e deixe a leitura conduzir a próxima anotação.'}</p>{drafts.slice(0, 2).map((draft) => <button type="button" className="reading-link" key={draft.id} onClick={() => onEdit(draft)} data-testid={`button-resume-${draft.id}`}><span>{draft.title}</span><ChevronRight size={14} /></button>)}{!drafts.length && <button type="button" className="reading-link" onClick={() => onNavigate('reader')} data-testid="button-open-reading"><span>Explorar capítulos</span><ChevronRight size={14} /></button>}</div></div></div>
     </section>
   );
 }
@@ -1445,7 +1750,8 @@ function Feed({
   onOpenProfile,
   onSelectReferencePreview,
   followedUsers,
-  onToggleFollow
+  onToggleFollow,
+  onSendNote
 }: { 
   annotations: Annotation[]; 
   tags: string[]; 
@@ -1462,6 +1768,7 @@ function Feed({
   onSelectReferencePreview?: (reference: BibleReference) => void;
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
+  onSendNote?: (annotation: Annotation) => void;
 }) {
   const [search, setSearch] = useState('');
   const [tag, setTag] = useState('todos');
@@ -1471,7 +1778,7 @@ function Feed({
   const filtered = published.filter((annotation) => matchesAnnotation(annotation, search, tag, book)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return (
     <section className="page"><div className="eyebrow">um lugar para compartilhar o que ficou</div><div className="notes-header"><div><h1 className="page-title">Mural de reflexões</h1><p className="page-intro">Páginas abertas, pensamentos curtos e a companhia de outras leituras.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-new-feed-annotation"><Plus size={15} /> Publicar uma anotação</button></div>
-      <div className="feed-layout"><div className="feed-main"><div className="device-banner"><Info size={15} /><span>Mural público sincronizado no Cloud Firestore. Você pode curtir, comentar e recompartilhar reflexões.</span></div><div className="feed-toolbar" style={{ marginTop: 14 }}><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar no mural..." data-testid="input-search-feed" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar mural por livro" data-testid="select-feed-book"><option value="todos">Todos os livros</option>{booksInFeed.map((item, idx) => <option key={`feed-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar mural por etiqueta" data-testid="select-feed-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`feed-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'reflexão no mural' : 'reflexões no mural'}</div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Nada apareceu ainda" text="Tente outra palavra ou publique uma reflexão a partir do que está lendo." action="Abrir compositor" onAction={onOpen} />}</div><aside className="feed-aside"><DraftPanel annotations={annotations} onEdit={onEdit} /><div className="paper-card side-panel"><h3>Como funciona</h3><p className="side-panel-intro">Finalize uma anotação quando ela ganhar forma. Publique quando quiser colocá-la no mural público.</p><button type="button" className="text-button" onClick={onOpen} data-testid="button-how-to-post">Escrever agora <ArrowRight size={13} /></button></div></aside></div>
+      <div className="feed-layout"><div className="feed-main"><div className="device-banner"><Info size={15} /><span>Mural público sincronizado no Cloud Firestore. Você pode curtir, comentar e recompartilhar reflexões.</span></div><div className="feed-toolbar" style={{ marginTop: 14 }}><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar no mural..." data-testid="input-search-feed" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar mural por livro" data-testid="select-feed-book"><option value="todos">Todos os livros</option>{booksInFeed.map((item, idx) => <option key={`feed-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar mural por etiqueta" data-testid="select-feed-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`feed-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'reflexão no mural' : 'reflexões no mural'}</div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title="Nada apareceu ainda" text="Tente outra palavra ou publique uma reflexão a partir do que está lendo." action="Abrir compositor" onAction={onOpen} />}</div><aside className="feed-aside"><DraftPanel annotations={annotations} onEdit={onEdit} /><div className="paper-card side-panel"><h3>Como funciona</h3><p className="side-panel-intro">Finalize uma anotação quando ela ganhar forma. Publique quando quiser colocá-la no mural público.</p><button type="button" className="text-button" onClick={onOpen} data-testid="button-how-to-post">Escrever agora <ArrowRight size={13} /></button></div></aside></div>
     </section>
   );
 }
@@ -1491,7 +1798,8 @@ function MyAnnotations({
   onOpenProfile,
   onSelectReferencePreview,
   followedUsers,
-  onToggleFollow
+  onToggleFollow,
+  onSendNote
 }: { 
   annotations: Annotation[]; 
   tags: string[]; 
@@ -1508,6 +1816,7 @@ function MyAnnotations({
   onSelectReferencePreview?: (reference: BibleReference) => void;
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
+  onSendNote?: (annotation: Annotation) => void;
 }) {
   const [scope, setScope] = useState<'all' | 'drafts' | 'finalized' | 'published'>('all');
   const [search, setSearch] = useState('');
@@ -1519,7 +1828,7 @@ function MyAnnotations({
     return scoped && matchesAnnotation(annotation, search, tag, book);
   }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const counts = { all: annotations.length, drafts: annotations.filter((item) => item.status === 'draft').length, finalized: annotations.filter((item) => item.status === 'finalized').length, published: annotations.filter((item) => item.published).length };
-  return <section className="page"><div className="eyebrow">o que você já percebeu</div><div className="notes-header"><div><h1 className="page-title">Minhas anotações</h1><p className="page-intro">Um índice vivo das conversas que você tem tido com a Escritura.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-add-note-list"><Plus size={15} /> Nova anotação</button></div><div className="scope-tabs">{([['all', 'Todas'], ['drafts', 'Rascunhos'], ['finalized', 'Finalizadas'], ['published', 'No mural']] as [typeof scope, string][]).map(([key, label]) => <button type="button" className={`scope-tab ${scope === key ? 'active' : ''}`} onClick={() => setScope(key)} key={key} data-testid={`tab-notes-${key}`}>{label} <span>{counts[key]}</span></button>)}</div><div className="notes-filter-row"><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, frase, passagem ou etiqueta..." data-testid="input-search-notes" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar anotações por livro" data-testid="select-notes-book"><option value="todos">Todos os livros</option>{booksInNotes.map((item, idx) => <option key={`notes-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar anotações por etiqueta" data-testid="select-notes-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`notes-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</div><div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} />) : <EmptyState title="Nenhuma anotação encontrada" text="Tente remover um filtro ou buscar por outra palavra." action="Limpar busca" onAction={() => { setSearch(''); setTag('todos'); setBook('todos'); }} />}</div></section>;
+  return <section className="page"><div className="eyebrow">o que você já percebeu</div><div className="notes-header"><div><h1 className="page-title">Minhas anotações</h1><p className="page-intro">Um índice vivo das conversas que você tem tido com a Escritura.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-add-note-list"><Plus size={15} /> Nova anotação</button></div><div className="scope-tabs">{([['all', 'Todas'], ['drafts', 'Rascunhos'], ['finalized', 'Finalizadas'], ['published', 'No mural']] as [typeof scope, string][]).map(([key, label]) => <button type="button" className={`scope-tab ${scope === key ? 'active' : ''}`} onClick={() => setScope(key)} key={key} data-testid={`tab-notes-${key}`}>{label} <span>{counts[key]}</span></button>)}</div><div className="notes-filter-row"><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, frase, passagem ou etiqueta..." data-testid="input-search-notes" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar anotações por livro" data-testid="select-notes-book"><option value="todos">Todos os livros</option>{booksInNotes.map((item, idx) => <option key={`notes-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar anotações por etiqueta" data-testid="select-notes-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`notes-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</div><div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title="Nenhuma anotação encontrada" text="Tente remover um filtro ou buscar por outra palavra." action="Limpar busca" onAction={() => { setSearch(''); setTag('todos'); setBook('todos'); }} />}</div></section>;
 }
 
 function matchesAnnotation(annotation: Annotation, search: string, tag: string, book: string) {
@@ -1542,7 +1851,8 @@ function AnnotationCard({
   onOpenProfile,
   onSelectReferencePreview,
   followedUsers,
-  onToggleFollow
+  onToggleFollow,
+  onSendNote
 }: { 
   annotation: Annotation; 
   annotations: Annotation[]; 
@@ -1558,6 +1868,7 @@ function AnnotationCard({
   onSelectReferencePreview?: (reference: BibleReference) => void;
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
+  onSendNote?: (annotation: Annotation) => void;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -1728,6 +2039,7 @@ function AnnotationCard({
           {connections.length > 0 && <span className="pill"><Link2 size={10} style={{ verticalAlign: '-2px', marginRight: 3 }} />{connections.length} conexão{connections.length > 1 ? 'ões' : ''}</span>}
         </div>
         <div className="card-actions">
+          <button type="button" className="icon-button" onClick={() => onSendNote?.(annotation)} aria-label="Enviar anotação para um amigo" title="Enviar para um escritor" data-testid={`button-send-${annotation.id}`}><Send size={14} /></button>
           <button type="button" className="icon-button" onClick={() => onFavorite(annotation.id)} aria-label={annotation.favorite ? 'Remover dos favoritos' : 'Favoritar anotação'} title={annotation.favorite ? 'Remover dos salvos' : 'Salvar / Favoritar'} data-testid={`button-favorite-${annotation.id}`}><Heart size={14} fill={annotation.favorite ? 'currentColor' : 'none'} color={annotation.favorite ? 'hsl(var(--accent))' : undefined} /></button>
           {isOwner && (
             <>
@@ -1738,6 +2050,163 @@ function AnnotationCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function SendNoteModal({
+  annotation,
+  currentUser,
+  followedUsers = [],
+  annotations = [],
+  onClose,
+  onSend
+}: {
+  annotation: Annotation;
+  currentUser: FirebaseUser | null;
+  followedUsers?: string[];
+  annotations: Annotation[];
+  onClose: () => void;
+  onSend: (recipientId: string, recipientName: string) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const writersList = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; photo?: string; isFollowed: boolean }>();
+    const uid = currentUser?.uid || 'guest';
+
+    followedUsers.forEach((id) => {
+      const match = annotations.find(a => a.authorId === id);
+      map.set(id, {
+        id,
+        name: match ? match.authorName : id,
+        photo: match?.authorPhoto,
+        isFollowed: true
+      });
+    });
+
+    annotations.forEach((a) => {
+      if (a.authorId && a.authorId !== uid && a.authorId !== 'guest') {
+        if (!map.has(a.authorId)) {
+          map.set(a.authorId, {
+            id: a.authorId,
+            name: a.authorName,
+            photo: a.authorPhoto,
+            isFollowed: followedUsers.includes(a.authorId)
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [annotations, followedUsers, currentUser]);
+
+  const filteredWriters = writersList.filter((w) =>
+    w.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 'min(460px, 100%)' }}>
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title" style={{ fontSize: '20px' }}>Enviar anotação</h2>
+            <p className="modal-subtitle">Envie uma cópia direta de "{annotation.title}" para outro escritor.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar modal"><X size={16} /></button>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div className="chip-entry" style={{ padding: '8px 12px' }}>
+            <Search size={14} color="hsl(var(--muted-foreground))" style={{ marginRight: 6 }} />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar nome de quem você segue ou outros leitores..."
+              style={{ width: '100%', border: 0, outline: 0, background: 'transparent', fontSize: '12px' }}
+              data-testid="input-search-recipient"
+            />
+          </div>
+        </div>
+
+        <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 6, marginBottom: 16 }}>
+          {filteredWriters.map((writer) => (
+            <div
+              key={writer.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justify: 'space-between',
+                padding: '8px 12px',
+                borderRadius: 10,
+                border: '1px solid hsl(var(--border))',
+                background: 'hsl(var(--background) / 0.5)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {writer.photo ? (
+                  <img src={writer.photo} alt={writer.name} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div className="avatar" style={{ width: 30, height: 30, fontSize: 12 }}>{writer.name[0]?.toUpperCase()}</div>
+                )}
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{writer.name}</div>
+                  {writer.isFollowed && <div style={{ fontSize: '10px', color: 'hsl(var(--accent))' }}>Você segue este escritor</div>}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="primary-button"
+                style={{ padding: '6px 12px', fontSize: '11px' }}
+                onClick={() => onSend(writer.id, writer.name)}
+                data-testid={`button-send-to-${writer.id}`}
+              >
+                <Send size={12} /> Enviar
+              </button>
+            </div>
+          ))}
+
+          {searchTerm.trim().length > 1 && !filteredWriters.some(w => w.name.toLowerCase() === searchTerm.trim().toLowerCase()) && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justify: 'space-between',
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px dashed hsl(var(--accent))',
+                background: 'hsl(var(--accent) / 0.06)',
+                marginTop: 4
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="avatar" style={{ width: 30, height: 30, fontSize: 12 }}>@</div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>Enviar para "@{searchTerm.trim().replace(/^@/, '')}"</div>
+                  <div style={{ fontSize: '10px', color: 'hsl(var(--muted-foreground))' }}>Enviar nota direta para este nome de usuário</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="primary-button"
+                style={{ padding: '6px 12px', fontSize: '11px' }}
+                onClick={() => onSend(searchTerm.trim().replace(/^@/, ''), searchTerm.trim().replace(/^@/, ''))}
+                data-testid="button-send-to-custom"
+              >
+                <Send size={12} /> Enviar
+              </button>
+            </div>
+          )}
+
+          {filteredWriters.length === 0 && !searchTerm.trim() && (
+            <div style={{ padding: 20, textAlign: 'center', color: 'hsl(var(--muted-foreground))', fontSize: '12px' }}>
+              Nenhum escritor na sua lista ainda. Digite um nome acima para enviar diretamente!
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1773,30 +2242,6 @@ function PreferencesView({ preferences, onPreferences, annotations, saved, onCle
       <p className="page-intro">Ajustes simples para que o caderno continue parecendo seu.</p>
       <div className="settings">
         <div className="paper-card settings-card">
-          <div className="setting-row">
-            <div>
-              <h3>Modo de Navegação dos Ícones</h3>
-              <p>Escolha se prefere os ícones no topo (Modo A) ou em uma barra inferior estilo Instagram (Modo B).</p>
-            </div>
-            <div className="segmented">
-              <button
-                type="button"
-                className={`segment ${(preferences.navigationMode || 'top') === 'top' ? 'active' : ''}`}
-                onClick={() => onPreferences({ navigationMode: 'top' })}
-                data-testid="button-nav-mode-top"
-              >
-                Modo A (Topo)
-              </button>
-              <button
-                type="button"
-                className={`segment ${(preferences.navigationMode || 'top') === 'bottom' ? 'active' : ''}`}
-                onClick={() => onPreferences({ navigationMode: 'bottom' })}
-                data-testid="button-nav-mode-bottom"
-              >
-                Modo B (Barra Inferior)
-              </button>
-            </div>
-          </div>
           <div className="setting-row">
             <div>
               <h3>Tamanho da letra do sistema completo</h3>
@@ -1865,7 +2310,23 @@ function PreferencesView({ preferences, onPreferences, annotations, saved, onCle
   );
 }
 
-function AnnotationComposer({ annotation, initialReference, annotations, onCancel, onPersist }: { annotation?: Annotation; initialReference?: BibleReference; annotations: Annotation[]; onCancel: () => void; onPersist: (draft: AnnotationDraft, editingId?: string, reason?: string) => string | void }) {
+function AnnotationComposer({ 
+  annotation, 
+  initialReference, 
+  annotations, 
+  onCancel, 
+  onPersist,
+  onChoiceMade,
+  onClosedWithoutChoice
+}: { 
+  annotation?: Annotation; 
+  initialReference?: BibleReference; 
+  annotations: Annotation[]; 
+  onCancel: () => void; 
+  onPersist: (draft: AnnotationDraft, editingId?: string, reason?: string) => string | void;
+  onChoiceMade?: (noteId: string) => void;
+  onClosedWithoutChoice?: (noteId: string) => void;
+}) {
   const [activeId, setActiveId] = useState<string | undefined>(annotation?.id);
   const [autoSaveLabel, setAutoSaveLabel] = useState<string>('');
   const [title, setTitle] = useState(annotation?.title ?? '');
@@ -1941,9 +2402,22 @@ function AnnotationComposer({ annotation, initialReference, annotations, onCance
     const safeReason = typeof reason === 'string' ? reason : 'save';
     const safeStatus = typeof nextStatus === 'string' ? (nextStatus as AnnotationStatus) : status;
     const safePublished = typeof nextPublished === 'boolean' ? nextPublished : published;
-    onPersist(buildDraft(safeStatus, safePublished), activeId, safeReason);
+    const targetId = onPersist(buildDraft(safeStatus, safePublished), activeId, safeReason);
+    const noteId = (typeof targetId === 'string' && targetId) ? targetId : activeId;
+    if (noteId) {
+      onChoiceMade?.(noteId);
+    }
   };
-  const closeWithoutLoss = () => { if (meaningful) persistAndClose('close'); else onCancel(); };
+
+  const closeWithoutLoss = () => {
+    if (meaningful) {
+      const targetId = onPersist(buildDraft('draft', published), activeId, 'close');
+      const noteId = (typeof targetId === 'string' && targetId) ? targetId : activeId;
+      if (noteId) onClosedWithoutChoice?.(noteId);
+    } else {
+      onCancel();
+    }
+  };
 
   // Handle double-click / text selection
   const handleTextSelect = (e: React.SyntheticEvent<HTMLTextAreaElement | HTMLInputElement>) => {
@@ -2195,8 +2669,8 @@ function AnnotationComposer({ annotation, initialReference, annotations, onCance
           </div>
           <div className="publish-toggle">
             <div>
-              <strong>{published ? 'Publicado no mural público (Firestore)' : 'Manter no meu caderno'}</strong>
-              <small>{published ? 'Esta reflexão ficará visível para outros usuários no mural com opções de curtir, comentar e recompartilhar.' : 'Você pode publicar quando a ideia estiver pronta.'}</small>
+              <strong>{published ? 'Publicar no Mural Público' : 'Privado (Somente no meu caderno)'}</strong>
+              <small>{published ? 'Esta reflexão ficará visível para a comunidade no mural público.' : 'Visível apenas para você no seu caderno pessoal.'}</small>
             </div>
             <button type="button" className={`switch ${published ? 'on' : ''}`} onClick={() => setPublished((current) => !current)} aria-label="Alternar publicação no mural" data-testid="button-toggle-publish"><span /></button>
           </div>
@@ -2204,9 +2678,22 @@ function AnnotationComposer({ annotation, initialReference, annotations, onCance
         <div className="modal-footer">
           <span className="form-hint">Escrevendo em Caderno Bíblico</span>
           <div className="footer-actions">
-            <button type="button" className="outline-button" onClick={() => persistAndClose('save', 'draft', false)} data-testid="button-save-draft"><FileText size={14} /> Guardar rascunho</button>
-            <button type="button" className="outline-button" onClick={() => persistAndClose('finalized', 'finalized', published)} data-testid="button-finalize-annotation"><CheckCircle2 size={14} /> Marcar como finalizada</button>
-            <button type="button" className="primary-button" onClick={() => persistAndClose(published ? 'published' : 'save', status, published)} data-testid="button-save-annotation"><Check size={14} /> {published ? 'Publicar no mural' : 'Guardar página'}</button>
+            <button 
+              type="button" 
+              className="outline-button" 
+              onClick={() => persistAndClose('save', 'draft', published)} 
+              data-testid="button-save-draft"
+            >
+              <FileText size={14} /> Salvar como rascunho
+            </button>
+            <button 
+              type="button" 
+              className="primary-button" 
+              onClick={() => persistAndClose('finalized', 'finalized', published)} 
+              data-testid="button-finalize-annotation"
+            >
+              <CheckCircle2 size={14} /> Concluir e salvar nota
+            </button>
           </div>
         </div>
       </section>
@@ -2251,6 +2738,7 @@ function NotificationsPopover({
               {notif.type === 'repost' && <Repeat size={15} />}
               {notif.type === 'comment' && <MessageSquare size={15} />}
               {notif.type === 'unfinished' && <Clock size={15} color="hsl(var(--accent))" />}
+              {notif.type === 'send' && <Send size={15} color="hsl(var(--accent))" />}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'hsl(var(--foreground))' }}>{notif.title}</div>
@@ -2404,6 +2892,7 @@ function ProfilesView({
 function UserProfileModal({ 
   profile, 
   annotations, 
+  sharedNotes = [],
   onClose,
   onNavigate,
   onEdit, 
@@ -2413,12 +2902,15 @@ function UserProfileModal({
   onLike,
   onAddComment,
   onRepost,
+  onSendNote,
+  onAdoptSharedNote,
   currentUser,
   followedUsers = [],
   onToggleFollow
 }: { 
   profile: { authorId: string; authorName: string; authorPhoto?: string };
   annotations: Annotation[]; 
+  sharedNotes?: SharedNote[];
   onClose: () => void;
   onNavigate?: (view: View) => void;
   onEdit: (annotation: Annotation) => void; 
@@ -2428,16 +2920,21 @@ function UserProfileModal({
   onLike: (id: string) => void;
   onAddComment: (id: string, text: string) => void;
   onRepost: (annotation: Annotation) => void;
+  onSendNote?: (annotation: Annotation) => void;
+  onAdoptSharedNote?: (shared: SharedNote) => void;
   currentUser: FirebaseUser | null;
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'grid' | 'list' | 'followers' | 'following'>('grid');
+  const [activeTab, setActiveTab] = useState<'grid' | 'list' | 'followers' | 'following' | 'shared'>('grid');
   const authorNotes = annotations.filter((a) => a.published && (a.authorId === profile.authorId || a.authorName === profile.authorName));
   const initial = (profile.authorName[0] || 'M').toUpperCase();
   const isSelf = currentUser?.uid === profile.authorId;
   const isFollowing = followedUsers.includes(profile.authorId);
   const handleName = `@${profile.authorName.toLowerCase().replace(/\s+/g, '_')}`;
+
+  const myReceivedNotes = sharedNotes.filter(s => s.recipientId === profile.authorId || s.recipientName === profile.authorName);
+  const mySentNotes = sharedNotes.filter(s => s.senderId === profile.authorId || s.senderName === profile.authorName);
 
   // Find real writers in the community
   const allAuthors = useMemo(() => {
@@ -2577,6 +3074,13 @@ function UserProfileModal({
           </button>
           <button 
             type="button" 
+            className={`profile-tab-btn ${activeTab === 'shared' ? 'active' : ''}`}
+            onClick={() => setActiveTab('shared')}
+          >
+            <Send size={15} /> Enviados ({myReceivedNotes.length + mySentNotes.length})
+          </button>
+          <button 
+            type="button" 
             className={`profile-tab-btn ${activeTab === 'followers' ? 'active' : ''}`}
             onClick={() => setActiveTab('followers')}
           >
@@ -2623,9 +3127,75 @@ function UserProfileModal({
                 </div>
               ))
             ) : (
-              <p style={{ color: '#667085', fontSize: '0.9rem', textAlign: 'center', padding: '30px 0', gridColumn: '1 / -1' }}>
-                Nenhum bloco de notas publicado por este perfil.
+              <p className="empty-message" style={{ gridColumn: '1 / -1', padding: '20px', textAlign: 'center', color: 'hsl(var(--muted-foreground))' }}>
+                Nenhuma publicação encontrada.
               </p>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Shared Notes */}
+        {activeTab === 'shared' && (
+          <div style={{ display: 'grid', gap: 14, marginTop: 16 }}>
+            {myReceivedNotes.length > 0 && (
+              <div>
+                <h4 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'hsl(var(--accent))', marginBottom: 10, fontWeight: 700 }}>
+                  Notas enviadas para {isSelf ? 'você' : profile.authorName}
+                </h4>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {myReceivedNotes.map((shared) => (
+                    <div className={`paper-card ${shared.color}`} key={shared.id} style={{ padding: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: '11px', color: 'hsl(var(--muted-foreground))', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <Send size={12} /> Enviado por <strong>@{shared.senderName}</strong> em {new Date(shared.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <h4 style={{ margin: '0 0 6px', fontSize: '17px', fontFamily: 'var(--app-font-serif)' }}>{shared.title}</h4>
+                      <p style={{ margin: '0 0 12px', fontSize: '13px', color: 'hsl(var(--foreground))', opacity: 0.9 }}>{shared.mainPoint}</p>
+                      
+                      {isSelf && (
+                        <button
+                          type="button"
+                          className="primary-button"
+                          style={{ padding: '7px 14px', fontSize: '12px', gap: 6 }}
+                          onClick={() => {
+                            onClose();
+                            onAdoptSharedNote?.(shared);
+                          }}
+                          data-testid={`button-adopt-shared-${shared.id}`}
+                        >
+                          <Copy size={13} /> Apropriar-se e Editar (Criar minha cópia)
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {mySentNotes.length > 0 && (
+              <div style={{ marginTop: myReceivedNotes.length > 0 ? 12 : 0 }}>
+                <h4 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'hsl(var(--muted-foreground))', marginBottom: 10, fontWeight: 700 }}>
+                  Notas enviadas por {isSelf ? 'você' : profile.authorName}
+                </h4>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {mySentNotes.map((shared) => (
+                    <div className="paper-card" key={shared.id} style={{ padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600 }}>{shared.title}</div>
+                        <div style={{ fontSize: '11px', color: 'hsl(var(--muted-foreground))' }}>Enviado para @{shared.recipientName}</div>
+                      </div>
+                      <Send size={14} color="hsl(var(--muted-foreground))" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {myReceivedNotes.length === 0 && mySentNotes.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '30px 20px', color: 'hsl(var(--muted-foreground))', fontSize: '13px' }}>
+                Nenhuma anotação enviada ou recebida por este perfil ainda.
+              </div>
             )}
           </div>
         )}

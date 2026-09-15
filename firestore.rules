@@ -19,5 +19,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if true;
     }
+
+    match /shared_notes/{noteId} {
+      allow read, write: if true;
+    }
+
+    match /notifications/{notificationId} {
+      allow read, write: if true;
+    }
   }
 }
