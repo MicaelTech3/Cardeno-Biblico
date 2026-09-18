@@ -34,6 +34,8 @@ import {
   Settings,
   Sparkles,
   Trash2,
+  Trophy,
+  GraduationCap,
   User,
   UserCheck,
   UserPlus,
@@ -47,6 +49,8 @@ import { Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wo
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { BibleReader } from '@/components/bible-reader';
+import { BibleLearningView } from '@/components/bible-learning';
+import { t, Language } from '@/i18n';
 import { 
   db, 
   auth,
@@ -224,7 +228,7 @@ type BibleVerse = {
   text: string;
 };
 
-type View = 'overview' | 'feed' | 'notes' | 'reader' | 'preferences' | 'profiles';
+type View = 'overview' | 'feed' | 'notes' | 'reader' | 'preferences' | 'profiles' | 'learn';
 
 type AppNotification = {
   id: string;
@@ -519,6 +523,7 @@ function viewForPath(path: string): View {
   if (path === '/caderno') return 'overview';
   if (path === '/mural') return 'feed';
   if (path === '/anotacoes') return 'notes';
+  if (path === '/aprender' || path === '/learn') return 'learn';
   if (path === '/escritores' || path === '/perfis') return 'profiles';
   if (path === '/leitor') return 'reader';
   if (path === '/preferencias') return 'preferences';
@@ -529,6 +534,7 @@ function pathForView(view: View) {
   if (view === 'overview') return '/caderno';
   if (view === 'feed') return '/mural';
   if (view === 'notes') return '/anotacoes';
+  if (view === 'learn') return '/aprender';
   if (view === 'profiles') return '/escritores';
   if (view === 'reader') return '/leitor';
   if (view === 'preferences') return '/preferencias';
@@ -1351,11 +1357,11 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
 
   return (
     <div className="app-shell">
-      <Sidebar view={view} onNavigate={onNavigate} annotationsCount={myAnnotations.length} tags={allTags} currentUser={currentUser} />
+      <Sidebar view={view} onNavigate={onNavigate} annotationsCount={myAnnotations.length} tags={allTags} currentUser={currentUser} language={preferences.language} />
       <main className="main-area has-bottom-nav">
         <header className="topbar">
           <div className="mobile-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <div className="brand-mark" onClick={() => onNavigate('overview')} title="Visão Geral">
+            <div className="brand-mark" onClick={() => onNavigate('overview')} title={t('nav.overview', preferences.language)}>
               <CadernoLogo />
             </div>
             <span 
@@ -1363,7 +1369,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
               onClick={() => onNavigate('overview')} 
               style={{ fontFamily: 'var(--app-font-serif)', fontSize: '18px', fontWeight: 600, letterSpacing: '-0.03em', color: 'hsl(var(--foreground))' }}
             >
-              Caderno Bíblico
+              {t('app.title', preferences.language)}
             </span>
           </div>
 
@@ -1453,12 +1459,21 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           </div>
         </header>
         <div className="below-header-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" className="below-header-bible" onClick={() => onNavigate('reader')} data-testid="button-header-bible"><BookOpen size={14} /> Bíblia</button>
-          <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> Nova anotação</button>
+          <button type="button" className="below-header-bible" onClick={() => onNavigate('reader')} data-testid="button-header-bible"><BookOpen size={14} /> {t('nav.reader', preferences.language)}</button>
+          <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> {t('nav.new_note', preferences.language)}</button>
         </div>
-        {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} />}
-        {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} />}
-        {view === 'notes' && <MyAnnotations annotations={myAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} />}
+        {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} />}
+        {view === 'learn' && (
+          <BibleLearningView
+            language={preferences.language}
+            onOpenReader={(book, chapter) => {
+              updatePreferences({ selectedBook: book, selectedChapter: chapter });
+              onNavigate('reader');
+            }}
+          />
+        )}
+        {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} />}
+        {view === 'notes' && <MyAnnotations annotations={myAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} />}
         {view === 'profiles' && <ProfilesView annotations={annotations} currentUser={currentUser} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onOpenProfile={setActiveProfile} />}
         {view === 'reader' && <BibleReader books={books} preferences={preferences} annotations={myAnnotations} saved={saved} onPreferences={updatePreferences} onOpen={openComposer} onSavePassage={handleToggleSavedPassage} />}
         {view === 'preferences' && <PreferencesView preferences={preferences} onPreferences={updatePreferences} annotations={myAnnotations} saved={saved} onClear={() => { if (window.confirm('Apagar as anotações e passagens deste dispositivo?')) { setAnnotations([]); setSaved([]); showToast('Dados locais apagados.'); } }} />}
@@ -1577,6 +1592,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           currentUser={currentUser} 
           onOpenProfile={setActiveProfile} 
           isNavVisible={isNavVisible}
+          language={preferences.language}
         />
       )}
 
@@ -1633,30 +1649,45 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   );
 }
 
-function Sidebar({ view, onNavigate, annotationsCount, tags, currentUser }: { view: View; onNavigate: (view: View) => void; annotationsCount: number; tags: string[]; currentUser: FirebaseUser | null }) {
+function Sidebar({ 
+  view, 
+  onNavigate, 
+  annotationsCount, 
+  tags, 
+  currentUser,
+  language = 'pt-BR'
+}: { 
+  view: View; 
+  onNavigate: (view: View) => void; 
+  annotationsCount: number; 
+  tags: string[]; 
+  currentUser: FirebaseUser | null;
+  language?: Language;
+}) {
   const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno';
   const initial = name.slice(0, 1).toUpperCase();
   return (
     <aside className="sidebar">
       <button type="button" className="brand" onClick={() => onNavigate('overview')} data-testid="button-brand-home">
-        <div className="brand-mark"><CadernoLogo /></div><div><div className="brand-word">Caderno Bíblico</div><div className="brand-sub">notas de uma jornada</div></div>
+        <div className="brand-mark"><CadernoLogo /></div><div><div className="brand-word">{t('app.title', language)}</div><div className="brand-sub">{t('app.subtitle', language)}</div></div>
       </button>
       <nav className="sidebar-nav" aria-label="Navegação principal">
-        <NavItem icon={<Archive size={16} />} label="Visão geral" active={view === 'overview'} onClick={() => onNavigate('overview')} testId="nav-overview" />
-        <NavItem icon={<PenLine size={16} />} label="Mural de reflexões" active={view === 'feed'} onClick={() => onNavigate('feed')} testId="nav-feed" />
-        <NavItem icon={<FileText size={16} />} label="Minhas anotações" count={annotationsCount} active={view === 'notes'} onClick={() => onNavigate('notes')} testId="nav-notes" />
-        <NavItem icon={<Users size={16} />} label="Buscar escritores" active={view === 'profiles'} onClick={() => onNavigate('profiles')} testId="nav-profiles" />
-        <NavItem icon={<BookOpen size={16} />} label="Ler a Bíblia" active={view === 'reader'} onClick={() => onNavigate('reader')} testId="nav-reader" />
+        <NavItem icon={<Archive size={16} />} label={t('nav.overview', language)} active={view === 'overview'} onClick={() => onNavigate('overview')} testId="nav-overview" />
+        <NavItem icon={<Trophy size={16} />} label={t('nav.learn', language)} active={view === 'learn'} onClick={() => onNavigate('learn')} testId="nav-learn" />
+        <NavItem icon={<PenLine size={16} />} label={t('nav.feed', language)} active={view === 'feed'} onClick={() => onNavigate('feed')} testId="nav-feed" />
+        <NavItem icon={<FileText size={16} />} label={t('nav.notes', language)} count={annotationsCount} active={view === 'notes'} onClick={() => onNavigate('notes')} testId="nav-notes" />
+        <NavItem icon={<Users size={16} />} label={t('nav.profiles', language)} active={view === 'profiles'} onClick={() => onNavigate('profiles')} testId="nav-profiles" />
+        <NavItem icon={<BookOpen size={16} />} label={t('nav.reader', language)} active={view === 'reader'} onClick={() => onNavigate('reader')} testId="nav-reader" />
       </nav>
       <hr className="sidebar-rule" />
-      <div className="sidebar-label">Etiquetas recentes</div>
+      <div className="sidebar-label">{t('nav.recent_tags', language)}</div>
       <div>{(tags.length ? tags.slice(0, 4) : ['comece por aqui']).map((tag, index) => <button type="button" className="tag-nav" key={tag} onClick={() => onNavigate('notes')} data-testid={`button-sidebar-tag-${tag}`}><span className={`tag-dot ${['', 'sage', 'gold', 'plum'][index]}`} />{tag}</button>)}</div>
-      <div className="sidebar-foot">{currentUser?.photoURL ? <img src={currentUser.photoURL} alt={name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} /> : <div className="avatar">{initial}</div>}<div className="foot-copy">{name}<small>{currentUser ? 'Conectado com Google' : 'Modo visitante'}</small></div><button type="button" className="icon-button" style={{ marginLeft: 'auto', color: 'inherit' }} onClick={() => onNavigate('preferences')} aria-label="Preferências" data-testid="button-sidebar-settings"><Settings size={15} /></button></div>
+      <div className="sidebar-foot">{currentUser?.photoURL ? <img src={currentUser.photoURL} alt={name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} /> : <div className="avatar">{initial}</div>}<div className="foot-copy">{name}<small>{currentUser ? 'Conectado com Google' : 'Modo visitante'}</small></div><button type="button" className="icon-button" style={{ marginLeft: 'auto', color: 'inherit' }} onClick={() => onNavigate('preferences')} aria-label={t('nav.preferences', language)} data-testid="button-sidebar-settings"><Settings size={15} /></button></div>
     </aside>
   );
 }
 
-function MobileMenuPanel({ view, onNavigate, currentUser, onOpenProfile }: { view: View; onNavigate: (view: View) => void; currentUser: FirebaseUser | null; onOpenProfile?: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void }) {
+function MobileMenuPanel({ view, onNavigate, currentUser, onOpenProfile, language = 'pt-BR' }: { view: View; onNavigate: (view: View) => void; currentUser: FirebaseUser | null; onOpenProfile?: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void; language?: Language }) {
   return (
     <div className="mobile-menu-panel">
       <div className="mobile-menu-account">
@@ -1664,16 +1695,23 @@ function MobileMenuPanel({ view, onNavigate, currentUser, onOpenProfile }: { vie
       </div>
       <button type="button" className="mobile-menu-settings" onClick={() => onNavigate('preferences')} data-testid="mobile-menu-settings">
         <Settings size={16} />
-        <span>Configurações</span>
+        <span>{t('nav.preferences', language)}</span>
       </button>
       <div className="mobile-menu-divider" />
-      <MobileNav view={view} onNavigate={onNavigate} />
+      <MobileNav view={view} onNavigate={onNavigate} language={language} />
     </div>
   );
 }
 
-function MobileNav({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
-  const items: [View, string, ReactNode][] = [['overview', 'Visão geral', <Archive size={15} />], ['feed', 'Mural de reflexões', <PenLine size={15} />], ['notes', 'Minhas anotações', <FileText size={15} />], ['profiles', 'Buscar escritores', <Users size={15} />], ['reader', 'Ler a Bíblia', <BookOpen size={15} />]];
+function MobileNav({ view, onNavigate, language = 'pt-BR' }: { view: View; onNavigate: (view: View) => void; language?: Language }) {
+  const items: [View, string, ReactNode][] = [
+    ['overview', t('nav.overview', language), <Archive size={15} />],
+    ['learn', t('nav.learn', language), <Trophy size={15} />],
+    ['feed', t('nav.feed', language), <PenLine size={15} />],
+    ['notes', t('nav.notes', language), <FileText size={15} />],
+    ['profiles', t('nav.profiles', language), <Users size={15} />],
+    ['reader', t('nav.reader', language), <BookOpen size={15} />]
+  ];
   return <div className="mobile-nav">{items.map(([key, label, icon]) => <button key={key} type="button" className={`nav-link ${view === key ? 'active' : ''}`} onClick={() => onNavigate(key)} data-testid={`mobile-nav-${key}`}>{icon}{label}</button>)}</div>;
 }
 
@@ -1698,7 +1736,8 @@ function Overview({
   onSelectReferencePreview,
   followedUsers,
   onToggleFollow,
-  onSendNote
+  onSendNote,
+  language = 'pt-BR'
 }: { 
   annotations: Annotation[]; 
   saved: SavedPassage[]; 
@@ -1717,20 +1756,74 @@ function Overview({
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
   onSendNote?: (annotation: Annotation) => void;
+  language?: Language;
 }) {
   const { user } = useAppUser();
   const recent = annotations.slice().sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3);
   const drafts = annotations.filter((annotation) => annotation.status === 'draft');
   const published = annotations.filter((annotation) => annotation.published).length;
   const email = currentUser?.email || user?.primaryEmailAddress?.emailAddress || '';
-  const greetingName = currentUser?.displayName?.split(' ')[0] || email.split('@')[0] || 'leitor';
+  const greetingName = currentUser?.displayName?.split(' ')[0] || email.split('@')[0] || (language === 'en' ? 'reader' : 'leitor');
   const formattedGreetingName = greetingName.charAt(0).toUpperCase() + greetingName.slice(1);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? t('overview.greeting_morning', language) : hour < 18 ? t('overview.greeting_afternoon', language) : t('overview.greeting_evening', language);
+
   return (
     <section className="page">
-      <div className="eyebrow">quarta-feira, 20 de março</div><h1 className="page-title">Bom dia, {formattedGreetingName}.</h1><p className="page-intro">Uma ideia não precisa chegar pronta. Deixe sua leitura aberta aqui e volte quando uma nova frase aparecer.</p>
-      <div className="overview-hero"><div className="paper-card prompt-card"><div className="prompt-kicker">Uma pergunta para hoje</div><div className="prompt-text">O que este texto revela sobre o coração de Deus?</div><button type="button" className="prompt-action" onClick={onOpen} data-testid="button-prompt-note">Começar uma reflexão <ArrowRight size={14} /></button></div><div className="paper-card stats-card"><div className="stats-heading"><h2>Seu caderno</h2><BookOpen className="stats-icon" size={19} /></div><div><div className="stats-big"><span className="stats-num" data-testid="text-note-count">{annotations.length}</span><span className="stats-caption">anotações feitas</span></div><div className="progress-track"><div className="progress-value" style={{ width: `${Math.min(100, Math.max(8, annotations.length * 14))}%` }} /></div><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}><span className="stats-caption">{published} no mural</span><span className="stats-caption">{drafts.length} em andamento</span></div></div></div></div>
-      <div className="section-head"><div><h2 className="section-title">Últimas anotações</h2><p className="section-meta">O fio mais recente da sua leitura</p></div><button type="button" className="text-button" onClick={() => onNavigate('notes')} data-testid="button-see-all-notes">Ver todas <ArrowRight size={14} /></button></div>
-      <div className="overview-columns"><div>{recent.length ? recent.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title="Seu caderno está aberto" text="A primeira frase pode ser simples. Comece escrevendo o que ficou com você." action="Fazer primeira anotação" onAction={onOpen} />}</div><div className="side-stack"><SavedPanel saved={saved} onNavigate={onNavigate} /><div className="paper-card side-panel"><h3>Continue de onde parou</h3><p className="side-panel-intro">{drafts.length ? 'Há ideias esperando uma nova visita.' : 'Escolha uma passagem e deixe a leitura conduzir a próxima anotação.'}</p>{drafts.slice(0, 2).map((draft) => <button type="button" className="reading-link" key={draft.id} onClick={() => onEdit(draft)} data-testid={`button-resume-${draft.id}`}><span>{draft.title}</span><ChevronRight size={14} /></button>)}{!drafts.length && <button type="button" className="reading-link" onClick={() => onNavigate('reader')} data-testid="button-open-reading"><span>Explorar capítulos</span><ChevronRight size={14} /></button>}</div></div></div>
+      <div className="eyebrow">{new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div>
+      <h1 className="page-title">{greeting}, {formattedGreetingName}.</h1>
+      <p className="page-intro">{t('overview.intro', language)}</p>
+      <div className="overview-hero">
+        <div className="paper-card prompt-card">
+          <div className="prompt-kicker">{t('overview.today_prompt_title', language)}</div>
+          <div className="prompt-text">{t('overview.today_prompt_text', language)}</div>
+          <button type="button" className="prompt-action" onClick={onOpen} data-testid="button-prompt-note">
+            {t('overview.start_reflection', language)} <ArrowRight size={14} />
+          </button>
+        </div>
+        <div className="paper-card stats-card">
+          <div className="stats-heading">
+            <h2>{t('overview.your_notebook', language)}</h2>
+            <BookOpen className="stats-icon" size={19} />
+          </div>
+          <div>
+            <div className="stats-big">
+              <span className="stats-num" data-testid="text-note-count">{annotations.length}</span>
+              <span className="stats-caption">{t('overview.notes_count_caption', language)}</span>
+            </div>
+            <div className="progress-track">
+              <div className="progress-value" style={{ width: `${Math.min(100, Math.max(8, annotations.length * 14))}%` }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+              <span className="stats-caption">{published} {t('overview.published_caption', language)}</span>
+              <span className="stats-caption">{drafts.length} {t('overview.in_progress_caption', language)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="section-head">
+        <div>
+          <h2 className="section-title">{t('overview.recent_notes', language)}</h2>
+          <p className="section-meta">{t('overview.recent_notes_sub', language)}</p>
+        </div>
+        <button type="button" className="text-button" onClick={() => onNavigate('notes')} data-testid="button-see-all-notes">
+          {t('overview.see_all', language)} <ArrowRight size={14} />
+        </button>
+      </div>
+      <div className="overview-columns">
+        <div>
+          {recent.length ? recent.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title={t('overview.empty_title', language)} text={t('overview.empty_desc', language)} action={t('overview.first_note_btn', language)} onAction={onOpen} />}
+        </div>
+        <div className="side-stack">
+          <SavedPanel saved={saved} onNavigate={onNavigate} />
+          <div className="paper-card side-panel">
+            <h3>{t('overview.continue_where_left', language)}</h3>
+            <p className="side-panel-intro">{drafts.length ? t('overview.has_drafts_hint', language) : t('overview.no_drafts_hint', language)}</p>
+            {drafts.slice(0, 2).map((draft) => <button type="button" className="reading-link" key={draft.id} onClick={() => onEdit(draft)} data-testid={`button-resume-${draft.id}`}><span>{draft.title}</span><ChevronRight size={14} /></button>)}
+            {!drafts.length && <button type="button" className="reading-link" onClick={() => onNavigate('reader')} data-testid="button-open-reading"><span>{t('overview.explore_chapters', language)}</span><ChevronRight size={14} /></button>}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -2235,17 +2328,26 @@ function Reader({ preferences, annotations, saved, onPreferences, onOpen, onSave
 }
 
 function PreferencesView({ preferences, onPreferences, annotations, saved, onClear }: { preferences: Preferences; onPreferences: (patch: Partial<Preferences>) => void; annotations: Annotation[]; saved: SavedPassage[]; onClear: () => void }) {
+  const lang = preferences.language || 'pt-BR';
+
+  const handleLanguageChange = (newLang: Preferences['language']) => {
+    onPreferences({
+      language: newLang,
+      bibleVersion: newLang === 'en' && preferences.bibleVersion === 'almeida' ? 'kjv' : preferences.bibleVersion
+    });
+  };
+
   return (
     <section className="page">
-      <div className="eyebrow">seu jeito de voltar</div>
-      <h1 className="page-title">Preferências</h1>
-      <p className="page-intro">Ajustes simples para que o caderno continue parecendo seu.</p>
+      <div className="eyebrow">{lang === 'en' ? 'your way back' : 'seu jeito de voltar'}</div>
+      <h1 className="page-title">{t('pref.title', lang)}</h1>
+      <p className="page-intro">{t('pref.intro', lang)}</p>
       <div className="settings">
         <div className="paper-card settings-card">
           <div className="setting-row">
             <div>
-              <h3>Tamanho da letra do sistema completo</h3>
-              <p>Aumente ou diminua a letra de todo o sistema (menus, títulos, notas e botões).</p>
+              <h3>{t('pref.font_size_label', lang)}</h3>
+              <p>{lang === 'en' ? 'Increase or decrease system text size across all views.' : 'Aumente ou diminua a letra de todo o sistema (menus, títulos, notas e botões).'}</p>
             </div>
             <div className="segmented">
               {(['small', 'medium', 'large', 'xlarge'] as const).map((size) => (
@@ -2256,54 +2358,60 @@ function PreferencesView({ preferences, onPreferences, annotations, saved, onCle
                   key={size}
                   data-testid={`button-system-font-size-${size}`}
                 >
-                  {size === 'small' ? 'Menor' : size === 'medium' ? 'Padrão' : size === 'large' ? 'Maior' : 'Muito Maior'}
+                  {size === 'small' ? t('pref.font_size_small', lang) : size === 'medium' ? t('pref.font_size_medium', lang) : size === 'large' ? t('pref.font_size_large', lang) : t('pref.font_size_xlarge', lang)}
                 </button>
               ))}
             </div>
           </div>
           <div className="setting-row">
             <div>
-              <h3>Idioma</h3>
-              <p>Escolha o idioma principal da experiência.</p>
+              <h3>{t('pref.language_label', lang)}</h3>
+              <p>{t('pref.language_desc', lang)}</p>
             </div>
-            <select className="select-field setting-select" value={preferences.language} onChange={(event) => onPreferences({ language: event.target.value as Preferences['language'] })} aria-label="Escolher idioma" data-testid="select-language">
-              <option value="pt-BR">Português</option>
-              <option value="en">English</option>
+            <select 
+              className="select-field setting-select" 
+              value={preferences.language} 
+              onChange={(event) => handleLanguageChange(event.target.value as Preferences['language'])} 
+              aria-label="Escolher idioma" 
+              data-testid="select-language"
+            >
+              <option value="pt-BR">Português (Brasil)</option>
+              <option value="en">English (US / UK)</option>
             </select>
           </div>
           <div className="setting-row">
             <div>
-              <h3>Tema da leitura</h3>
-              <p>Escolha a luz que acompanha seu momento.</p>
+              <h3>{t('pref.theme_label', lang)}</h3>
+              <p>{lang === 'en' ? 'Choose the light that accompanies your devotions.' : 'Escolha a luz que acompanha seu momento.'}</p>
             </div>
             <div className="segmented">
-              <button type="button" className={`segment ${preferences.theme === 'light' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'light' })} data-testid="button-theme-light"><Eye size={13} /> Claro</button>
-              <button type="button" className={`segment ${preferences.theme === 'dark' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'dark' })} data-testid="button-theme-dark"><EyeOff size={13} /> Escuro</button>
+              <button type="button" className={`segment ${preferences.theme === 'light' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'light' })} data-testid="button-theme-light"><Eye size={13} /> {t('pref.theme_light', lang)}</button>
+              <button type="button" className={`segment ${preferences.theme === 'dark' ? 'active' : ''}`} onClick={() => onPreferences({ theme: 'dark' })} data-testid="button-theme-dark"><EyeOff size={13} /> {t('pref.theme_dark', lang)}</button>
             </div>
           </div>
           <div className="setting-row">
             <div>
-              <h3>Tamanho do texto dos versículos</h3>
-              <p>Defina o ritmo visual dos versículos no leitor.</p>
+              <h3>{lang === 'en' ? 'Verse text size' : 'Tamanho do texto dos versículos'}</h3>
+              <p>{lang === 'en' ? 'Define visual pace of verses in the reader.' : 'Defina o ritmo visual dos versículos no leitor.'}</p>
             </div>
             <div className="segmented">
               {(['small', 'medium', 'large'] as Preferences['readerSize'][]).map((size) => (
-                <button type="button" className={`segment ${preferences.readerSize === size ? 'active' : ''}`} onClick={() => onPreferences({ readerSize: size })} key={size} data-testid={`button-reader-size-${size}`}>{size === 'small' ? 'Menor' : size === 'medium' ? 'Padrão' : 'Maior'}</button>
+                <button type="button" className={`segment ${preferences.readerSize === size ? 'active' : ''}`} onClick={() => onPreferences({ readerSize: size })} key={size} data-testid={`button-reader-size-${size}`}>{size === 'small' ? t('pref.font_size_small', lang) : size === 'medium' ? t('pref.font_size_medium', lang) : t('pref.font_size_large', lang)}</button>
               ))}
             </div>
           </div>
           <div className="setting-row">
             <div>
-              <h3>Números dos versículos</h3>
-              <p>Deixe as referências visíveis enquanto lê.</p>
+              <h3>{t('pref.verse_numbers_label', lang)}</h3>
+              <p>{t('pref.verse_numbers_desc', lang)}</p>
             </div>
             <button type="button" className={`switch ${preferences.showVerseNumbers ? 'on' : ''}`} onClick={() => onPreferences({ showVerseNumbers: !preferences.showVerseNumbers })} aria-label="Alternar números dos versículos" data-testid="button-toggle-verse-numbers"><span /></button>
           </div>
         </div>
         <div className="paper-card local-data-card">
-          <h3>Dados locais</h3>
-          <p>Este caderno vive neste navegador. Você tem {annotations.length} anotações e {saved.length} passagens guardadas. Limpar os dados não pode ser desfeito.</p>
-          <button type="button" className="outline-button danger-button" onClick={onClear} data-testid="button-clear-local-data"><Trash2 size={14} /> Apagar dados deste dispositivo</button>
+          <h3>{t('pref.local_data_title', lang)}</h3>
+          <p>{lang === 'en' ? `This notebook lives in this browser. You have ${annotations.length} notes and ${saved.length} saved passages. Clearing data cannot be undone.` : `Este caderno vive neste navegador. Você tem ${annotations.length} anotações e ${saved.length} passagens guardadas. Limpar os dados não pode ser desfeito.`}</p>
+          <button type="button" className="outline-button danger-button" onClick={onClear} data-testid="button-clear-local-data"><Trash2 size={14} /> {t('pref.clear_data_btn', lang)}</button>
         </div>
       </div>
     </section>
@@ -3349,7 +3457,8 @@ function InstagramBottomNav({
   onNavigate,
   currentUser,
   onOpenProfile,
-  isNavVisible = true
+  isNavVisible = true,
+  language = 'pt-BR'
 }: {
   view: View;
   onNavigate: (view: View) => void;
@@ -3357,6 +3466,7 @@ function InstagramBottomNav({
   currentUser: FirebaseUser | null;
   onOpenProfile: (author: { authorId: string; authorName: string; authorPhoto?: string }) => void;
   isNavVisible?: boolean;
+  language?: Language;
 }) {
   const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Meu caderno';
 
@@ -3366,44 +3476,55 @@ function InstagramBottomNav({
         type="button"
         className={`floating-menu-item ${view === 'overview' ? 'active' : ''}`}
         onClick={() => onNavigate('overview')}
-        title="Início (Visão Geral)"
+        title={t('nav.home', language)}
         data-testid="bottom-nav-overview"
       >
         <Home size={19} />
-        <span>Início</span>
+        <span>{t('nav.home', language)}</span>
+      </button>
+
+      <button
+        type="button"
+        className={`floating-menu-item ${view === 'learn' ? 'active' : ''}`}
+        onClick={() => onNavigate('learn')}
+        title={t('nav.learn', language)}
+        data-testid="bottom-nav-learn"
+      >
+        <Trophy size={19} />
+        <span>{t('nav.learn', language)}</span>
       </button>
 
       <button
         type="button"
         className={`floating-menu-item ${view === 'notes' ? 'active' : ''}`}
         onClick={() => onNavigate('notes')}
-        title="Minhas anotações"
+        title={t('nav.notes', language)}
         data-testid="bottom-nav-notes"
       >
         <FileText size={19} />
-        <span>Anotações</span>
+        <span>{t('nav.notes', language)}</span>
       </button>
 
       <button
         type="button"
         className={`floating-menu-item ${view === 'feed' ? 'active' : ''}`}
         onClick={() => onNavigate('feed')}
-        title="Mural de reflexões"
+        title={t('nav.feed', language)}
         data-testid="bottom-nav-feed"
       >
         <PenLine size={19} />
-        <span>Mural</span>
+        <span>{t('nav.feed', language)}</span>
       </button>
 
       <button
         type="button"
         className={`floating-menu-item ${view === 'profiles' ? 'active' : ''}`}
         onClick={() => onNavigate('profiles')}
-        title="Buscar escritores"
+        title={t('nav.profiles', language)}
         data-testid="bottom-nav-profiles"
       >
         <Users size={19} />
-        <span>Escritores</span>
+        <span>{t('nav.profiles', language)}</span>
       </button>
 
       <button
@@ -3416,7 +3537,7 @@ function InstagramBottomNav({
             onNavigate('profiles');
           }
         }}
-        title="Meu Perfil"
+        title={t('nav.profile', language)}
         data-testid="bottom-nav-profile"
       >
         {currentUser?.photoURL ? (
@@ -3424,7 +3545,7 @@ function InstagramBottomNav({
         ) : (
           <User size={19} />
         )}
-        <span>Perfil</span>
+        <span>{t('nav.profile', language)}</span>
       </button>
     </nav>
   );

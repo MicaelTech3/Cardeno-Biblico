@@ -38,6 +38,7 @@ type ReaderPreferences = {
   bibleVersion: string;
   readerSize: 'small' | 'medium' | 'large';
   showVerseNumbers: boolean;
+  language?: 'pt-BR' | 'en';
 };
 
 type BibleVerse = {
@@ -229,10 +230,16 @@ export function BibleReader({
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ offsetX: number; offsetY: number } | null>(null);
 
+  const isEn = preferences.language === 'en';
+
   const visibleBooks = useMemo(() => {
-    const query = bookSearch.trim().toLocaleLowerCase('pt-BR');
+    const query = bookSearch.trim().toLowerCase();
     if (!query) return books;
-    return books.filter((book) => book.name.toLocaleLowerCase('pt-BR').includes(query));
+    return books.filter((book) => {
+      const ptName = book.name.toLowerCase();
+      const enName = (englishBookNames[book.name] || '').toLowerCase();
+      return ptName.includes(query) || enName.includes(query);
+    });
   }, [bookSearch, books]);
 
   useEffect(() => {
@@ -357,59 +364,59 @@ export function BibleReader({
 
   return (
     <section className="page">
-      <div className="eyebrow">leitura com calma</div>
-      <h1 className="page-title">Ler a Bíblia</h1>
-      <p className="page-intro">Toda a Bíblia em um leitor feito para telas pequenas. Escolha um livro, encontre um capítulo e deixe a leitura abrir uma nova pergunta.</p>
+      <div className="eyebrow">{isEn ? 'peaceful reading' : 'leitura com calma'}</div>
+      <h1 className="page-title">{isEn ? 'Read the Bible' : 'Ler a Bíblia'}</h1>
+      <p className="page-intro">{isEn ? 'The complete Bible designed for focused reading. Choose a book, find a chapter, and let reading spark a new thought.' : 'Toda a Bíblia em um leitor feito para telas pequenas. Escolha um livro, encontre um capítulo e deixe a leitura abrir uma nova pergunta.'}</p>
       <div className="reader-layout">
         <div className="paper-card book-browser">
           <div className="book-browser-heading">
             <div>
-              <div className="browser-title">Livros</div>
-              <p className="book-browser-meta">66 livros · 1.189 capítulos</p>
+              <div className="browser-title">{isEn ? 'Books' : 'Livros'}</div>
+              <p className="book-browser-meta">{isEn ? '66 books · 1,189 chapters' : '66 livros · 1.189 capítulos'}</p>
             </div>
             <span className="testament-count">{visibleBooks.length}</span>
           </div>
           <div className="book-search">
             <Search size={14} />
-            <input value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder="Encontrar livro" aria-label="Buscar livro da Bíblia" />
+            <input value={bookSearch} onChange={(event) => setBookSearch(event.target.value)} placeholder={isEn ? 'Find book' : 'Encontrar livro'} aria-label="Buscar livro da Bíblia" />
           </div>
           <div className="book-list">
             {visibleBooks.map((book) => (
               <button type="button" className={`book-button ${book.name === preferences.selectedBook ? 'selected' : ''}`} onClick={() => onPreferences({ selectedBook: book.name, selectedChapter: 1 })} key={book.name} data-testid={`button-book-${book.name}`}>
-                <span>{book.name}</span>
+                <span>{isEn ? (englishBookNames[book.name] || book.name) : book.name}</span>
                 <span>{book.chapters}</span>
               </button>
             ))}
-            {!visibleBooks.length && <span className="book-empty">Nenhum livro encontrado.</span>}
+            {!visibleBooks.length && <span className="book-empty">{isEn ? 'No book found.' : 'Nenhum livro encontrado.'}</span>}
           </div>
         </div>
         <div className="paper-card reader-paper">
           <div className="reader-toolbar">
-            <div className="reader-kicker"><BookOpen size={13} /> {currentBook.testament}</div>
+            <div className="reader-kicker"><BookOpen size={13} /> {isEn ? (currentBook.testament === 'Antigo Testamento' ? 'Old Testament' : 'New Testament') : currentBook.testament}</div>
             <label className="reader-version">
-              <span>Versão</span>
+              <span>{isEn ? 'Version' : 'Versão'}</span>
               <select value={preferences.bibleVersion} onChange={(event) => onPreferences({ bibleVersion: event.target.value })} aria-label="Escolher versão da Bíblia" data-testid="select-bible-version">
                 {bibleVersions.map((version) => <option value={version.id} key={version.id}>{version.label} · {version.language}</option>)}
               </select>
             </label>
           </div>
-          <h2 className="reader-title">{preferences.selectedBook}</h2>
-          <p className="reader-sub">1. Escolha o capítulo e depois toque em um número de versículo para ir direto até ele.</p>
+          <h2 className="reader-title">{isEn ? (englishBookNames[preferences.selectedBook] || preferences.selectedBook) : preferences.selectedBook}</h2>
+          <p className="reader-sub">{isEn ? '1. Choose chapter and tap a verse number to jump directly to it.' : '1. Escolha o capítulo e depois toque em um número de versículo para ir direto até ele.'}</p>
           <div className="chapter-scroll" aria-label={`Capítulos de ${currentBook.name}`}>
             {Array.from({ length: currentBook.chapters }, (_, index) => index + 1).map((chapter) => (
               <button type="button" className={`chapter-button ${chapter === preferences.selectedChapter ? 'selected' : ''}`} onClick={() => onPreferences({ selectedChapter: chapter })} key={chapter} data-testid={`button-chapter-${chapter}`}>{chapter}</button>
             ))}
           </div>
-          <div className="reader-source">{bibleVersions.find((version) => version.id === preferences.bibleVersion)?.label ?? 'Bíblia'} · texto completo por capítulo</div>
-          {isLoading && <div className="reader-status">Carregando o texto completo…</div>}
+          <div className="reader-source">{bibleVersions.find((version) => version.id === preferences.bibleVersion)?.label ?? 'Bíblia'} · {isEn ? 'full chapter text' : 'texto completo por capítulo'}</div>
+          {isLoading && <div className="reader-status">{isEn ? 'Loading scripture text…' : 'Carregando o texto completo…'}</div>}
           {loadError && <div className="reader-status warning"><Info size={14} /> {loadError}</div>}
           <div className="verse-picker">
-            <div className="picker-heading"><span className="picker-step">2</span><div><strong>Versículos</strong><small>Escolha um número para abrir o trecho</small></div></div>
+            <div className="picker-heading"><span className="picker-step">2</span><div><strong>{isEn ? 'Verses' : 'Versículos'}</strong><small>{isEn ? 'Choose a number to open the passage' : 'Escolha um número para abrir o trecho'}</small></div></div>
             <div className="verse-number-scroll" aria-label={`Versículos de ${currentBook.name} ${preferences.selectedChapter}`}>
               {verses.map((verse) => <button type="button" className={`verse-number-button ${selectedVerseNumber === verse.number ? 'selected' : ''}`} onClick={() => goToVerse(verse)} key={verse.number} data-testid={`button-verse-${verse.number}`}>{verse.number}</button>)}
             </div>
           </div>
-          <div className="reader-selection-hint"><span>Toque em um versículo para marcar, pintar ou escrever uma nota.</span><span>{Object.values(verseMarks).filter((mark) => mark.note || mark.favorite || mark.highlight).length} marcados</span></div>
+          <div className="reader-selection-hint"><span>{isEn ? 'Tap a verse to highlight, favorite or write a note.' : 'Toque em um versículo para marcar, pintar ou escrever uma nota.'}</span><span>{Object.values(verseMarks).filter((mark) => mark.note || mark.favorite || mark.highlight).length} {isEn ? 'marked' : 'marcados'}</span></div>
           <div className="verse-list">
             {verses.map((verse) => (
               <div
@@ -426,25 +433,25 @@ export function BibleReader({
                 <div className="verse-number" style={{ visibility: preferences.showVerseNumbers ? 'visible' : 'hidden' }}>{verse.number}</div>
                 <div className="verse-content">
                   <p className="verse-text" style={{ '--reader-size': readerSize } as CSSProperties}>{verse.text}</p>
-                  {(verseMarks[verseKey(verse.number)]?.note || verseMarks[verseKey(verse.number)]?.favorite) && <span className="verse-mark-indicator"><FileText size={11} /> {verseMarks[verseKey(verse.number)]?.favorite ? 'Favorito' : 'Nota adicionada'}</span>}
+                  {(verseMarks[verseKey(verse.number)]?.note || verseMarks[verseKey(verse.number)]?.favorite) && <span className="verse-mark-indicator"><FileText size={11} /> {verseMarks[verseKey(verse.number)]?.favorite ? (isEn ? 'Favorite' : 'Favorito') : (isEn ? 'Note added' : 'Nota adicionada')}</span>}
                 </div>
               </div>
             ))}
           </div>
           {selectedVerseNumber !== null && <div className={`verse-study-panel floating ${isPanelFullscreen ? 'fullscreen' : ''} ${isDraggingBubble ? 'dragging' : ''}`} ref={bubbleRef} style={bubblePosition && !isPanelFullscreen ? { left: bubblePosition.x, top: bubblePosition.y, right: 'auto', bottom: 'auto' } : undefined}>
-            <div className="study-panel-heading drag-handle" onPointerDown={startBubbleDrag} title="Arraste para mover o balão">
-              <div><div className="eyebrow">estudo do versículo</div><h3>{preferences.selectedBook} {preferences.selectedChapter}:{selectedVerseNumber}</h3></div>
+            <div className="study-panel-heading drag-handle" onPointerDown={startBubbleDrag} title={isEn ? "Drag to move bubble" : "Arraste para mover o balão"}>
+              <div><div className="eyebrow">{isEn ? 'verse study' : 'estudo do versículo'}</div><h3>{(isEn ? englishBookNames[preferences.selectedBook] || preferences.selectedBook : preferences.selectedBook)} {preferences.selectedChapter}:{selectedVerseNumber}</h3></div>
               <div className="study-panel-heading-actions">
-                <button type="button" className="study-close" onClick={() => setIsPanelFullscreen(!isPanelFullscreen)} title={isPanelFullscreen ? "Restaurar tamanho" : "Preencher a tela com o balão"} aria-label="Preencher tela" data-testid="button-toggle-fullscreen-bubble">
+                <button type="button" className="study-close" onClick={() => setIsPanelFullscreen(!isPanelFullscreen)} title={isPanelFullscreen ? (isEn ? "Restore size" : "Restaurar tamanho") : (isEn ? "Fill screen" : "Preencher a tela com o balão")} aria-label="Preencher tela" data-testid="button-toggle-fullscreen-bubble">
                   {isPanelFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
                 </button>
                 <button type="button" className={`study-favorite ${selectedMark?.favorite ? 'active' : ''}`} onClick={() => updateSelectedMark({ favorite: !selectedMark?.favorite })} aria-label={selectedMark?.favorite ? 'Remover versículo dos favoritos' : 'Favoritar versículo'} data-testid="button-favorite-verse"><Heart size={18} fill={selectedMark?.favorite ? 'currentColor' : 'none'} /></button>
                 <button type="button" className="study-close" onClick={() => { setSelectedVerseNumber(null); setIsPanelFullscreen(false); }} aria-label="Fechar balão do versículo" data-testid="button-close-verse-bubble"><X size={15} /></button>
               </div>
             </div>
-            <div className="study-color-row"><span>Cor da marcação</span><div className="verse-color-picker">{(['gold', 'sage', 'terracotta', 'plum', 'navy'] as ColorName[]).map((color) => <button type="button" className={`verse-color-button ${color} ${selectedMark?.highlight === color ? 'active' : ''}`} onClick={() => updateSelectedMark({ highlight: color })} key={color} aria-label={`Pintar versículo de ${color}`} data-testid={`button-highlight-${color}`} />)}<button type="button" className="verse-color-clear" onClick={() => updateSelectedMark({ highlight: null })} aria-label="Remover cor do versículo" data-testid="button-clear-highlight"><X size={13} /></button></div></div>
+            <div className="study-color-row"><span>{isEn ? 'Highlight color' : 'Cor da marcação'}</span><div className="verse-color-picker">{(['gold', 'sage', 'terracotta', 'plum', 'navy'] as ColorName[]).map((color) => <button type="button" className={`verse-color-button ${color} ${selectedMark?.highlight === color ? 'active' : ''}`} onClick={() => updateSelectedMark({ highlight: color })} key={color} aria-label={`Pintar versículo de ${color}`} data-testid={`button-highlight-${color}`} />)}<button type="button" className="verse-color-clear" onClick={() => updateSelectedMark({ highlight: null })} aria-label="Remover cor do versículo" data-testid="button-clear-highlight"><X size={13} /></button></div></div>
             <div className="study-note-heading">
-              <label className="study-note-label" htmlFor="verse-note">Minha nota</label>
+              <label className="study-note-label" htmlFor="verse-note">{isEn ? 'My note' : 'Minha nota'}</label>
               <button
                 type="button"
                 className="study-fullscreen-btn"
@@ -454,19 +461,19 @@ export function BibleReader({
                   setIsPanelFullscreen(false);
                   onOpen(selectedReference);
                 }}
-                title="Escrever em Tela Cheia"
-                aria-label="Escrever nota em Tela Cheia"
+                title={isEn ? "Write in Fullscreen" : "Escrever em Tela Cheia"}
+                aria-label={isEn ? "Write note in Fullscreen" : "Escrever nota em Tela Cheia"}
                 data-testid="button-fullscreen-verse-note"
               >
                 <Maximize2 size={13} />
-                <span>Tela cheia</span>
+                <span>{isEn ? 'Fullscreen' : 'Tela cheia'}</span>
               </button>
             </div>
-            <textarea id="verse-note" className="study-note-input" style={{ minHeight: `${noteHeight}px` }} value={noteDraft} onChange={(event) => { setNoteDraft(event.target.value); setNoteSaved(false); }} onBlur={saveVerseNote} placeholder="O que este versículo despertou em você?" data-testid="input-verse-note" />
+            <textarea id="verse-note" className="study-note-input" style={{ minHeight: `${noteHeight}px` }} value={noteDraft} onChange={(event) => { setNoteDraft(event.target.value); setNoteSaved(false); }} onBlur={saveVerseNote} placeholder={isEn ? "What did this verse awaken in you?" : "O que este versículo despertou em você?"} data-testid="input-verse-note" />
             
             {annotations.length > 0 && (
               <div className="study-link-note-section">
-                <label htmlFor="select-link-study" className="study-link-label"><Link2 size={12} /> Vincular a uma nota existente:</label>
+                <label htmlFor="select-link-study" className="study-link-label"><Link2 size={12} /> {isEn ? 'Link to an existing note:' : 'Vincular a uma nota existente:'}</label>
                 <select
                   id="select-link-study"
                   className="study-link-select"
@@ -481,7 +488,7 @@ export function BibleReader({
                   }}
                   data-testid="select-link-study"
                 >
-                  <option value="" disabled>-- Conectar versículo a um estudo --</option>
+                  <option value="" disabled>{isEn ? '-- Connect verse to a study --' : '-- Conectar versículo a um estudo --'}</option>
                   {annotations.map((ann) => (
                     <option key={ann.id} value={ann.id}>{ann.title}</option>
                   ))}
@@ -489,14 +496,14 @@ export function BibleReader({
               </div>
             )}
 
-            <div className="study-drag-hint">Arraste o cabeçalho para mover este balão.</div>
-            <div className="study-panel-footer"><span>{noteSaved && <><Check size={13} /> Nota salva</>}</span><button type="button" className="primary-button" onClick={saveVerseNote} data-testid="button-save-verse-note"><Check size={14} /> Salvar nota</button></div>
+            <div className="study-drag-hint">{isEn ? 'Drag header to move this bubble.' : 'Arraste o cabeçalho para mover este balão.'}</div>
+            <div className="study-panel-footer"><span>{noteSaved && <><Check size={13} /> {isEn ? 'Note saved' : 'Nota salva'}</>}</span><button type="button" className="primary-button" onClick={saveVerseNote} data-testid="button-save-verse-note"><Check size={14} /> {isEn ? 'Save note' : 'Salvar nota'}</button></div>
           </div>}
           <div className="verse-actions">
-            <button type="button" className="primary-button" onClick={() => onOpen(selectedReference)} data-testid="button-note-from-reader"><Plus size={15} /> Anotar {selectedVerseNumber === null ? 'nesta passagem' : 'neste versículo'}</button>
-            <button type="button" className="outline-button" onClick={() => onSavePassage(currentPassage)} data-testid="button-save-passage"><Bookmark size={15} fill={isSaved ? 'currentColor' : 'none'} /> {isSaved ? 'Leitura guardada' : 'Guardar leitura'}</button>
+            <button type="button" className="primary-button" onClick={() => onOpen(selectedReference)} data-testid="button-note-from-reader"><Plus size={15} /> {isEn ? (selectedVerseNumber === null ? 'Annotate passage' : 'Annotate verse') : `Anotar ${selectedVerseNumber === null ? 'nesta passagem' : 'neste versículo'}`}</button>
+            <button type="button" className="outline-button" onClick={() => onSavePassage(currentPassage)} data-testid="button-save-passage"><Bookmark size={15} fill={isSaved ? 'currentColor' : 'none'} /> {isSaved ? (isEn ? 'Passage saved' : 'Leitura guardada') : (isEn ? 'Save passage' : 'Guardar leitura')}</button>
           </div>
-          {related.length > 0 && <div className="related-note"><div className="eyebrow">suas anotações aqui</div><div className="pill-row">{related.map((annotation) => <span className="pill" key={annotation.id}><FileText size={10} style={{ verticalAlign: '-2px', marginRight: 4 }} />{annotation.title}</span>)}</div></div>}
+          {related.length > 0 && <div className="related-note"><div className="eyebrow">{isEn ? 'your notes here' : 'suas anotações aqui'}</div><div className="pill-row">{related.map((annotation) => <span className="pill" key={annotation.id}><FileText size={10} style={{ verticalAlign: '-2px', marginRight: 4 }} />{annotation.title}</span>)}</div></div>}
         </div>
       </div>
     </section>
