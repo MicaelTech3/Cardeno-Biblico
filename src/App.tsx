@@ -50,6 +50,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { BibleReader } from '@/components/bible-reader';
 import { BibleLearningView } from '@/components/bible-learning';
+import { InvestigationBoardModal } from '@/components/investigation-board';
 import { t, Language } from '@/i18n';
 import { 
   db, 
@@ -771,6 +772,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
   // Profile view & Verse preview popover state
   const [activeProfile, setActiveProfile] = useState<{ authorId: string; authorName: string; authorPhoto?: string } | null>(null);
   const [activeVersePreview, setActiveVersePreview] = useState<BibleReference | null>(null);
+  const [investigationAnnotation, setInvestigationAnnotation] = useState<Annotation | null>(null);
 
   useEffect(() => {
     const handleCustomProfileOpen = (e: Event) => {
@@ -1462,7 +1464,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           <button type="button" className="below-header-bible" onClick={() => onNavigate('reader')} data-testid="button-header-bible"><BookOpen size={14} /> {t('nav.reader', preferences.language)}</button>
           <button type="button" className="primary-button" onClick={() => openComposer()} data-testid="button-quick-add"><Plus size={15} /> {t('nav.new_note', preferences.language)}</button>
         </div>
-        {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} />}
+        {view === 'overview' && <Overview annotations={myAnnotations} saved={saved} onNavigate={onNavigate} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} onOpenInvestigation={setInvestigationAnnotation} />}
         {view === 'learn' && (
           <BibleLearningView
             language={preferences.language}
@@ -1472,8 +1474,8 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
             }}
           />
         )}
-        {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} />}
-        {view === 'notes' && <MyAnnotations annotations={myAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} />}
+        {view === 'feed' && <Feed annotations={publicFeedAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} onOpenInvestigation={setInvestigationAnnotation} />}
+        {view === 'notes' && <MyAnnotations annotations={myAnnotations} tags={allTags} onOpen={openComposer} onEdit={editComposer} onDelete={setConfirmDelete} onFavorite={toggleFavorite} onReference={openReference} onLike={handleLike} onAddComment={handleAddComment} onRepost={handleRepost} currentUser={currentUser} onOpenProfile={setActiveProfile} onSelectReferencePreview={setActiveVersePreview} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onSendNote={(a) => setSendNoteTarget(a)} language={preferences.language} onOpenInvestigation={setInvestigationAnnotation} />}
         {view === 'profiles' && <ProfilesView annotations={annotations} currentUser={currentUser} followedUsers={followedUsers} onToggleFollow={handleToggleFollow} onOpenProfile={setActiveProfile} />}
         {view === 'reader' && <BibleReader books={books} preferences={preferences} annotations={myAnnotations} saved={saved} onPreferences={updatePreferences} onOpen={openComposer} onSavePassage={handleToggleSavedPassage} />}
         {view === 'preferences' && <PreferencesView preferences={preferences} onPreferences={updatePreferences} annotations={myAnnotations} saved={saved} onClear={() => { if (window.confirm('Apagar as anotações e passagens deste dispositivo?')) { setAnnotations([]); setSaved([]); showToast('Dados locais apagados.'); } }} />}
@@ -1600,7 +1602,8 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
         <AnnotationComposer 
           annotation={composer.annotation} 
           initialReference={composer.initialReference} 
-          annotations={annotations} 
+          annotations={myAnnotations} 
+          currentUser={currentUser}
           onCancel={() => setComposer(undefined)} 
           onPersist={persistAnnotation}
           onChoiceMade={(id) => {
@@ -1631,6 +1634,7 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           currentUser={currentUser} 
           followedUsers={followedUsers} 
           onToggleFollow={handleToggleFollow} 
+          onOpenInvestigation={setInvestigationAnnotation}
         />
       )}
       {sendNoteTarget && (
@@ -1641,6 +1645,25 @@ function AppShell({ view, onNavigate }: { view: View; onNavigate: (view: View) =
           annotations={annotations} 
           onClose={() => setSendNoteTarget(null)} 
           onSend={(recipientId, recipientName) => handleSendNote(sendNoteTarget, recipientId, recipientName)} 
+        />
+      )}
+      {investigationAnnotation && (
+        <InvestigationBoardModal
+          annotation={investigationAnnotation}
+          annotations={annotations}
+          currentUser={currentUser}
+          onClose={() => setInvestigationAnnotation(null)}
+          onEdit={(a) => {
+            setInvestigationAnnotation(null);
+            editComposer(a);
+          }}
+          onReference={(ref) => {
+            setInvestigationAnnotation(null);
+            openReference(ref);
+          }}
+          onSelectAnnotation={(a) => {
+            setInvestigationAnnotation(a);
+          }}
         />
       )}
       {activeVersePreview && <VersePreviewModal reference={activeVersePreview} onClose={() => setActiveVersePreview(null)} onOpenBible={openReference} />}
@@ -1737,7 +1760,8 @@ function Overview({
   followedUsers,
   onToggleFollow,
   onSendNote,
-  language = 'pt-BR'
+  language = 'pt-BR',
+  onOpenInvestigation
 }: { 
   annotations: Annotation[]; 
   saved: SavedPassage[]; 
@@ -1757,6 +1781,7 @@ function Overview({
   onToggleFollow?: (authorId: string, authorName: string) => void;
   onSendNote?: (annotation: Annotation) => void;
   language?: Language;
+  onOpenInvestigation?: (annotation: Annotation) => void;
 }) {
   const { user } = useAppUser();
   const recent = annotations.slice().sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3);
@@ -1812,7 +1837,7 @@ function Overview({
       </div>
       <div className="overview-columns">
         <div>
-          {recent.length ? recent.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title={t('overview.empty_title', language)} text={t('overview.empty_desc', language)} action={t('overview.first_note_btn', language)} onAction={onOpen} />}
+          {recent.length ? recent.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} onOpenInvestigation={onOpenInvestigation} />) : <EmptyState title={t('overview.empty_title', language)} text={t('overview.empty_desc', language)} action={t('overview.first_note_btn', language)} onAction={onOpen} />}
         </div>
         <div className="side-stack">
           <SavedPanel saved={saved} onNavigate={onNavigate} />
@@ -1844,7 +1869,8 @@ function Feed({
   onSelectReferencePreview,
   followedUsers,
   onToggleFollow,
-  onSendNote
+  onSendNote,
+  onOpenInvestigation
 }: { 
   annotations: Annotation[]; 
   tags: string[]; 
@@ -1862,6 +1888,7 @@ function Feed({
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
   onSendNote?: (annotation: Annotation) => void;
+  onOpenInvestigation?: (annotation: Annotation) => void;
 }) {
   const [search, setSearch] = useState('');
   const [tag, setTag] = useState('todos');
@@ -1871,7 +1898,7 @@ function Feed({
   const filtered = published.filter((annotation) => matchesAnnotation(annotation, search, tag, book)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return (
     <section className="page"><div className="eyebrow">um lugar para compartilhar o que ficou</div><div className="notes-header"><div><h1 className="page-title">Mural de reflexões</h1><p className="page-intro">Páginas abertas, pensamentos curtos e a companhia de outras leituras.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-new-feed-annotation"><Plus size={15} /> Publicar uma anotação</button></div>
-      <div className="feed-layout"><div className="feed-main"><div className="device-banner"><Info size={15} /><span>Mural público sincronizado no Cloud Firestore. Você pode curtir, comentar e recompartilhar reflexões.</span></div><div className="feed-toolbar" style={{ marginTop: 14 }}><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar no mural..." data-testid="input-search-feed" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar mural por livro" data-testid="select-feed-book"><option value="todos">Todos os livros</option>{booksInFeed.map((item, idx) => <option key={`feed-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar mural por etiqueta" data-testid="select-feed-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`feed-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'reflexão no mural' : 'reflexões no mural'}</div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title="Nada apareceu ainda" text="Tente outra palavra ou publique uma reflexão a partir do que está lendo." action="Abrir compositor" onAction={onOpen} />}</div><aside className="feed-aside"><DraftPanel annotations={annotations} onEdit={onEdit} /><div className="paper-card side-panel"><h3>Como funciona</h3><p className="side-panel-intro">Finalize uma anotação quando ela ganhar forma. Publique quando quiser colocá-la no mural público.</p><button type="button" className="text-button" onClick={onOpen} data-testid="button-how-to-post">Escrever agora <ArrowRight size={13} /></button></div></aside></div>
+      <div className="feed-layout"><div className="feed-main"><div className="device-banner"><Info size={15} /><span>Mural público sincronizado no Cloud Firestore. Você pode curtir, comentar e recompartilhar reflexões.</span></div><div className="feed-toolbar" style={{ marginTop: 14 }}><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar no mural..." data-testid="input-search-feed" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar mural por livro" data-testid="select-feed-book"><option value="todos">Todos os livros</option>{booksInFeed.map((item, idx) => <option key={`feed-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar mural por etiqueta" data-testid="select-feed-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`feed-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'reflexão no mural' : 'reflexões no mural'}</div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} onOpenInvestigation={onOpenInvestigation} />) : <EmptyState title="Nada apareceu ainda" text="Tente outra palavra ou publique uma reflexão a partir do que está lendo." action="Abrir compositor" onAction={onOpen} />}</div><aside className="feed-aside"><DraftPanel annotations={annotations} onEdit={onEdit} /><div className="paper-card side-panel"><h3>Como funciona</h3><p className="side-panel-intro">Finalize uma anotação quando ela ganhar forma. Publique quando quiser colocá-la no mural público.</p><button type="button" className="text-button" onClick={onOpen} data-testid="button-how-to-post">Escrever agora <ArrowRight size={13} /></button></div></aside></div>
     </section>
   );
 }
@@ -1892,7 +1919,9 @@ function MyAnnotations({
   onSelectReferencePreview,
   followedUsers,
   onToggleFollow,
-  onSendNote
+  onSendNote,
+  language = 'pt-BR',
+  onOpenInvestigation
 }: { 
   annotations: Annotation[]; 
   tags: string[]; 
@@ -1910,6 +1939,8 @@ function MyAnnotations({
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
   onSendNote?: (annotation: Annotation) => void;
+  language?: Language;
+  onOpenInvestigation?: (annotation: Annotation) => void;
 }) {
   const [scope, setScope] = useState<'all' | 'drafts' | 'finalized' | 'published'>('all');
   const [search, setSearch] = useState('');
@@ -1921,7 +1952,7 @@ function MyAnnotations({
     return scoped && matchesAnnotation(annotation, search, tag, book);
   }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const counts = { all: annotations.length, drafts: annotations.filter((item) => item.status === 'draft').length, finalized: annotations.filter((item) => item.status === 'finalized').length, published: annotations.filter((item) => item.published).length };
-  return <section className="page"><div className="eyebrow">o que você já percebeu</div><div className="notes-header"><div><h1 className="page-title">Minhas anotações</h1><p className="page-intro">Um índice vivo das conversas que você tem tido com a Escritura.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-add-note-list"><Plus size={15} /> Nova anotação</button></div><div className="scope-tabs">{([['all', 'Todas'], ['drafts', 'Rascunhos'], ['finalized', 'Finalizadas'], ['published', 'No mural']] as [typeof scope, string][]).map(([key, label]) => <button type="button" className={`scope-tab ${scope === key ? 'active' : ''}`} onClick={() => setScope(key)} key={key} data-testid={`tab-notes-${key}`}>{label} <span>{counts[key]}</span></button>)}</div><div className="notes-filter-row"><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, frase, passagem ou etiqueta..." data-testid="input-search-notes" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar anotações por livro" data-testid="select-notes-book"><option value="todos">Todos os livros</option>{booksInNotes.map((item, idx) => <option key={`notes-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar anotações por etiqueta" data-testid="select-notes-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`notes-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</div><div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} />) : <EmptyState title="Nenhuma anotação encontrada" text="Tente remover um filtro ou buscar por outra palavra." action="Limpar busca" onAction={() => { setSearch(''); setTag('todos'); setBook('todos'); }} />}</div></section>;
+  return <section className="page"><div className="eyebrow">o que você já percebeu</div><div className="notes-header"><div><h1 className="page-title">Minhas anotações</h1><p className="page-intro">Um índice vivo das conversas que você tem tido com a Escritura.</p></div><button type="button" className="primary-button" onClick={onOpen} data-testid="button-add-note-list"><Plus size={15} /> Nova anotação</button></div><div className="scope-tabs">{([['all', 'Todas'], ['drafts', 'Rascunhos'], ['finalized', 'Finalizadas'], ['published', 'No mural']] as [typeof scope, string][]).map(([key, label]) => <button type="button" className={`scope-tab ${scope === key ? 'active' : ''}`} onClick={() => setScope(key)} key={key} data-testid={`tab-notes-${key}`}>{label} <span>{counts[key]}</span></button>)}</div><div className="notes-filter-row"><div className="search-wrap"><Search size={15} /><input type="search" className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, frase, passagem ou etiqueta..." data-testid="input-search-notes" /></div><select className="select-field filter-select" value={book} onChange={(event) => setBook(event.target.value)} aria-label="Filtrar anotações por livro" data-testid="select-notes-book"><option value="todos">Todos os livros</option>{booksInNotes.map((item, idx) => <option key={`notes-book-${item}-${idx}`} value={item}>{item}</option>)}</select><select className="select-field filter-select" value={tag} onChange={(event) => setTag(event.target.value)} aria-label="Filtrar anotações por etiqueta" data-testid="select-notes-tag"><option value="todos">Todas as etiquetas</option>{tags.map((item, idx) => <option key={`notes-tag-${item}-${idx}`} value={item}>{item}</option>)}</select></div><div className="notes-count">{filtered.length} {filtered.length === 1 ? 'resultado' : 'resultados'}</div><div>{filtered.length ? filtered.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} annotations={annotations} currentUser={currentUser} onEdit={onEdit} onDelete={onDelete} onFavorite={onFavorite} onReference={onReference} onLike={onLike} onAddComment={onAddComment} onRepost={onRepost} onOpenProfile={onOpenProfile} onSelectReferencePreview={onSelectReferencePreview} followedUsers={followedUsers} onToggleFollow={onToggleFollow} onSendNote={onSendNote} onOpenInvestigation={onOpenInvestigation} />) : <EmptyState title="Nenhuma anotação encontrada" text="Tente remover um filtro ou buscar por outra palavra." action="Limpar busca" onAction={() => { setSearch(''); setTag('todos'); setBook('todos'); }} />}</div></section>;
 }
 
 function matchesAnnotation(annotation: Annotation, search: string, tag: string, book: string) {
@@ -1945,7 +1976,8 @@ function AnnotationCard({
   onSelectReferencePreview,
   followedUsers,
   onToggleFollow,
-  onSendNote
+  onSendNote,
+  onOpenInvestigation
 }: { 
   annotation: Annotation; 
   annotations: Annotation[]; 
@@ -1962,6 +1994,7 @@ function AnnotationCard({
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
   onSendNote?: (annotation: Annotation) => void;
+  onOpenInvestigation?: (annotation: Annotation) => void;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -2037,16 +2070,23 @@ function AnnotationCard({
         </div>
       </div>
 
-      <h3 className="post-title" data-testid={`text-title-${annotation.id}`}>{annotation.title}</h3>
-      <p className="post-point" data-testid={`text-point-${annotation.id}`}>{annotation.mainPoint}</p>
+      <div 
+        className="card-clickable-study" 
+        onClick={() => onOpenInvestigation?.(annotation)}
+        style={{ cursor: 'pointer' }}
+        title="Clique no bloco para abrir o Mural de Investigação (Caminhos e Conexões deste Estudo)"
+      >
+        <h3 className="post-title" data-testid={`text-title-${annotation.id}`}>{annotation.title}</h3>
+        <p className="post-point" data-testid={`text-point-${annotation.id}`}>{annotation.mainPoint}</p>
 
-      {annotation.phrases.length > 0 && (
-        <div className="phrase-list">
-          {annotation.phrases.map((phrase, index) => (
-            <div className="phrase" key={`${annotation.id}-phrase-${index}`} data-testid={`text-phrase-${annotation.id}-${index}`}>{phrase}</div>
-          ))}
-        </div>
-      )}
+        {annotation.phrases.length > 0 && (
+          <div className="phrase-list">
+            {annotation.phrases.map((phrase, index) => (
+              <div className="phrase" key={`${annotation.id}-phrase-${index}`} data-testid={`text-phrase-${annotation.id}-${index}`}>{phrase}</div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="reference-row">
         {annotation.references.map((reference, idx) => (
@@ -3014,7 +3054,8 @@ function UserProfileModal({
   onAdoptSharedNote,
   currentUser,
   followedUsers = [],
-  onToggleFollow
+  onToggleFollow,
+  onOpenInvestigation,
 }: { 
   profile: { authorId: string; authorName: string; authorPhoto?: string };
   annotations: Annotation[]; 
@@ -3033,6 +3074,7 @@ function UserProfileModal({
   currentUser: FirebaseUser | null;
   followedUsers?: string[];
   onToggleFollow?: (authorId: string, authorName: string) => void;
+  onOpenInvestigation?: (annotation: Annotation) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'grid' | 'list' | 'followers' | 'following' | 'shared'>('grid');
   const authorNotes = annotations.filter((a) => a.published && (a.authorId === profile.authorId || a.authorName === profile.authorName));
