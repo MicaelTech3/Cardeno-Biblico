@@ -3253,7 +3253,7 @@ function UserProfileModal({
                 <div 
                   className={`profile-grid-card ${annotation.color}`}
                   key={annotation.id}
-                  onClick={() => onEdit(annotation)}
+                  onClick={() => isSelf ? onEdit(annotation) : onOpenInvestigation?.(annotation)}
                 >
                   <div>
                     <div className="profile-grid-title">{annotation.title}</div>

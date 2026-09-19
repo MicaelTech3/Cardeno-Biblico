@@ -112,11 +112,23 @@ export function InvestigationBoardModal({
       <div className="investigation-board">
         {/* Corkboard / Detective Wall Header */}
         <header className="investigation-header">
-          <div className="investigation-title-group">
+          <div className="investigation-header-top">
             <div className="investigation-kicker">
               <span className="thumbtack-dot red" />
-              <span>Quadro Investigativo de Estudo · Mural de Conexões</span>
+              <span>Quadro Investigativo de Estudo</span>
             </div>
+            <button
+              type="button"
+              className="icon-button close-board-btn"
+              onClick={onClose}
+              aria-label="Fechar quadro de investigação"
+              title="Fechar mural"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="investigation-title-group">
             <h2 id="investigation-board-title" className="investigation-main-title">
               {annotation.title || 'Anotação sem título'}
             </h2>
@@ -151,26 +163,16 @@ export function InvestigationBoardModal({
                   title="Editar notas, frases, versículos e conectar novas páginas"
                   data-testid="button-edit-investigation-board"
                 >
-                  <Edit3 size={15} /> Editar Estudo e Conexões
+                  <Edit3 size={14} /> Editar Estudo e Conexões
                 </button>
               </div>
             ) : (
               <div className="creator-badge-wrap">
                 <span className="creator-permission-pill is-viewer" title="Apenas o autor pode fazer alterações neste estudo">
-                  <Lock size={14} /> Modo de Leitura (Criador: @{annotation.authorName})
+                  <Lock size={14} /> Modo Leitura (@{annotation.authorName})
                 </span>
               </div>
             )}
-
-            <button
-              type="button"
-              className="icon-button close-board-btn"
-              onClick={onClose}
-              aria-label="Fechar quadro de investigação"
-              title="Fechar mural"
-            >
-              <X size={20} />
-            </button>
           </div>
         </header>
 
@@ -195,15 +197,16 @@ export function InvestigationBoardModal({
             <div className="column-cards-stack">
               {annotation.references.length > 0 ? (
                 annotation.references.map((ref, idx) => {
-                  const verseSnippet = sampleScriptures[ref.label] ||
-                    `Passagem de ${ref.label}. Consulte o texto sagrado diretamente no leitor para contexto completo.`;
+                  const refLabel = ref.label || (ref.book ? `${ref.book} ${ref.chapter}${ref.verseStart ? `:${ref.verseStart}` : ''}${ref.verseEnd ? `-${ref.verseEnd}` : ''}` : 'Passagem Bíblica');
+                  const verseSnippet = sampleScriptures[refLabel] ||
+                    `Passagem de ${refLabel}. Consulte o texto sagrado diretamente no leitor para contexto completo.`;
 
                   return (
                     <div className="pinned-card scripture-card" key={ref.id || `ref-${idx}`}>
                       <div className="pin-head gold" />
                       <div className="card-top-tag">
                         <BookOpen size={13} />
-                        <strong>{ref.label}</strong>
+                        <strong>{refLabel}</strong>
                       </div>
                       <p className="scripture-verse-text">
                         "{verseSnippet}"
